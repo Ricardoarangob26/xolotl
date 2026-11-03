@@ -5,7 +5,7 @@ import path from "node:path";
 export const SEVERITIES = ["critical", "high", "medium", "low", "info"] as const;
 export type Severity = (typeof SEVERITIES)[number];
 
-export const CATEGORIES = ["sast", "sca", "secret", "iac", "container", "dast"] as const;
+export const CATEGORIES = ["sast", "sca", "secret", "iac", "container", "host", "config", "dast"] as const;
 export type Category = (typeof CATEGORIES)[number];
 
 export const TRIAGE_STATUSES = ["open", "confirmed", "false_positive", "accepted_risk", "fixed"] as const;
@@ -124,11 +124,14 @@ function fingerprintOf(f: Finding): string {
   switch (f.category) {
     case "sca":
     case "container":
+    case "host":
       return hash([f.category, loc.target ?? "", f.package ? pkgKey(f.package) : "", primaryVulnId(f)]);
     case "secret":
       return hash([f.category, loc.file, loc.startLine, loc.commit ?? ""]);
     case "dast":
       return hash([f.category, f.ruleId, loc.url ?? loc.target]);
+    case "config":
+      return hash([f.category, f.ruleId, loc.target]);
     default: {
       const code = f.snippet?.replace(/\s+/g, " ").trim();
       return hash([f.category, f.ruleId, loc.file, code || loc.startLine]);
@@ -158,7 +161,7 @@ function dedupe(list: Finding[]): Finding[] {
   const byFp = new Map<string, Finding>();
 
   for (const f of list) {
-    if ((f.category === "sca" || f.category === "container") && f.package) {
+    if ((f.category === "sca" || f.category === "container" || f.category === "host") && f.package) {
       const key = `${f.category}|${f.location?.target ?? ""}|${pkgKey(f.package)}`;
       const bucket = byPkg.get(key) ?? [];
       const ids = new Set([...(f.ids ?? []), ...(f.cve ?? [])]);

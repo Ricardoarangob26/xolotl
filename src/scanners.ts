@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveTool, ResolvedTool, ToolId, toolVersion } from "./binaries.js";
-import { run, tail } from "./exec.js";
+import { run, tail, which } from "./exec.js";
+import { buildSbom, checksToFindings, hardeningChecks, HostInfo, hostInfo, parseCollected, writeArtifacts } from "./host.js";
 import { RawFinding } from "./findings.js";
 import { parseBandit, parseGitleaks, parseNuclei, parseOsv, parseSarif, parseSemgrep, parseTrivy } from "./parsers.js";
 import { ToolRun } from "./store.js";
@@ -292,4 +293,65 @@ export async function limited<T>(tasks: (() => Promise<T>)[], max: number): Prom
     }),
   );
   return results;
+}
+
+// ───────────── Servidores (recolector + Trivy sobre SBOM + endurecimiento) ─────────────
+export interface SshOpts {
+  target: string;
+  port?: number;
+  identityFile?: string;
+  sudo: boolean;
+  timeoutMs: number;
+}
+
+/** Ejecuta el recolector en el servidor por SSH, solo con llave o agente (BatchMode: nunca pide contraseña). */
+export async function collectViaSsh(o: SshOpts, script: string): Promise<string> {
+  const ssh = which("ssh");
+  if (!ssh) throw new Error("No se encontró el cliente ssh en el PATH.");
+  // Ni usuario ni host pueden empezar con "-" (se leerían como opciones de ssh); el "--" de abajo es la segunda barrera.
+  if (!/^[A-Za-z0-9_][A-Za-z0-9._-]*(@[A-Za-z0-9_[][A-Za-z0-9._:[\]-]*)?$/.test(o.target)) throw new Error(`Destino SSH no válido: ${o.target}`);
+  const args = [
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=15",
+    "-o", "StrictHostKeyChecking=accept-new",
+    ...(o.port ? ["-p", String(o.port)] : []),
+    ...(o.identityFile ? ["-i", o.identityFile] : []),
+    "--",
+    o.target,
+    o.sudo ? "sudo -n sh -s" : "sh -s",
+  ];
+  const r = await run(ssh, args, { input: script, timeoutMs: o.timeoutMs, maxStdout: 32 * 1024 * 1024 });
+  if (r.timedOut) throw new Error("La recolección por SSH superó el tiempo límite.");
+  if (!r.stdout.includes("===XOLOTL meta===")) {
+    const why = tail(r, 6);
+    const hint = /a password is required|sudo:/.test(why) ? " (sudo pide contraseña: usa sudo=false, o el modo collected_file desde tu terminal)" : "";
+    throw new Error(`No se pudo recolectar por SSH (código ${r.code}): ${why}${hint}`);
+  }
+  return r.stdout;
+}
+
+export async function scanHostText(dir: string, text: string, ignoreUnfixed: boolean, timeoutMs: number): Promise<{ info: HostInfo; outcomes: Outcome[] }> {
+  const sections = parseCollected(text);
+  const info = hostInfo(sections);
+  const checks = hardeningChecks(sections, info);
+  const config: Outcome = {
+    run: { tool: "xolotl-host", status: "ok", count: checks.length, message: `${info.osName} · kernel ${info.kernel} · ${info.root ? "con root" : "sin root (parcial)"}` },
+    findings: checksToFindings(checks, info),
+  };
+
+  if (!info.trivyType) {
+    fs.writeFileSync(path.join(dir, "host-collect.txt"), text);
+    return { info, outcomes: [config, { run: { tool: "trivy", status: "skipped", message: `distribución no soportada para vulnerabilidades (${info.osId})` }, findings: [] }] };
+  }
+  const sbomFile = writeArtifacts(dir, text, buildSbom(sections, info));
+  const vulns = await guarded("trivy", async (t) => {
+    const out = path.join(dir, "trivy-host.json");
+    const args = ["sbom", "--scanners", "vuln", "--format", "json", "--output", out, "--quiet", "--timeout", `${Math.round(timeoutMs / 60_000)}m`, ...(ignoreUnfixed ? ["--ignore-unfixed"] : []), sbomFile];
+    const r = await exe(t, args, { timeoutMs });
+    needOutput(out, r, "trivy sbom");
+    const findings = parseTrivy(readJson(out), null, "host", info.hostname);
+    const fixable = findings.filter((f) => f.package?.fixedVersion).length;
+    return { findings, message: `${info.packages} paquetes de ${info.osName}; ${fixable} de ${findings.length} con parche publicado` };
+  });
+  return { info, outcomes: [config, vulns] };
 }

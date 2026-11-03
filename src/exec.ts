@@ -16,6 +16,8 @@ export interface RunOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   maxStdout?: number;
+  /** Texto para la entrada estándar (p. ej. el script que ejecuta `ssh host sh -s`). */
+  input?: string;
 }
 
 const IS_WIN = process.platform === "win32";
@@ -68,8 +70,12 @@ export function run(file: string, args: string[], opts: RunOptions = {}): Promis
       cwd: opts.cwd,
       env: { ...process.env, ...opts.env },
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [opts.input !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
     });
+    if (opts.input !== undefined && child.stdin) {
+      child.stdin.on("error", () => {}); // el proceso pudo cerrar antes de leer todo
+      child.stdin.end(opts.input);
+    }
 
     const finish = (code: number | null, error?: string) => {
       if (settled) return;
@@ -85,10 +91,10 @@ export function run(file: string, args: string[], opts: RunOptions = {}): Promis
       });
     };
 
-    child.stdout.on("data", (d: Buffer) => {
+    child.stdout!.on("data", (d: Buffer) => {
       if (stdout.length < maxOut) stdout += d.toString("utf8");
     });
-    child.stderr.on("data", (d: Buffer) => {
+    child.stderr!.on("data", (d: Buffer) => {
       stderr += d.toString("utf8");
       if (stderr.length > 128 * 1024) stderr = stderr.slice(-64 * 1024);
     });

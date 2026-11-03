@@ -8,6 +8,7 @@ await build({
   format: "esm",
   target: "node20",
   outfile: "dist/index.js",
+  loader: { ".sh": "text" },
   banner: {
     js: "#!/usr/bin/env node\nimport { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);",
   },

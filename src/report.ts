@@ -8,6 +8,8 @@ const CAT_ES: Record<string, string> = {
   secret: "Secretos",
   iac: "Infraestructura como código",
   container: "Contenedores",
+  host: "Paquetes del servidor",
+  config: "Endurecimiento del servidor",
   dast: "Pruebas dinámicas (DAST)",
 };
 const STATUS_ES: Record<string, string> = {

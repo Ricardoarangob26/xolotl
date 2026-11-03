@@ -6,7 +6,7 @@
 
 Servidor MCP + plugin de Claude Code que une siete escáneres de seguridad open source en una sola herramienta y pone a un agente de IA a hacer lo que los escáneres no hacen: leer el código, descartar falsos positivos con criterio, priorizar y verificar que cada arreglo funcione.
 
-`SAST` · `SCA` · `Secretos` · `Contenedores` · `IaC` · `DAST` · `Triage con IA`
+`SAST` · `SCA` · `Secretos` · `Contenedores` · `IaC` · `Servidores` · `DAST` · `Triage con IA`
 
 </div>
 
@@ -23,6 +23,7 @@ Servidor MCP + plugin de Claude Code que une siete escáneres de seguridad open 
 | **Secretos** | Tokens, claves y contraseñas, **también en todo el historial de git** | Gitleaks, Trivy | `scan_static` |
 | **Contenedores** | Paquetes vulnerables y secretos dentro de imágenes | Trivy | `scan_container_image` |
 | **IaC** | Dockerfile, compose, Kubernetes, Helm, Terraform, CloudFormation mal configurados | Trivy | `scan_iac`, `scan_static` |
+| **Servidores Linux** | Paquetes del sistema con CVE (entendiendo los parches retroportados de RHEL/Debian) y endurecimiento: SSH, cuentas, sudo, firewall, SELinux/AppArmor, kernel, servicios expuestos, SUID, reinicio pendiente | Trivy + reglas propias | `scan_host`, `host_collector` |
 | **DAST** | Malas configuraciones, exposiciones y CVE en apps, APIs y servicios en ejecución | Nuclei | `scan_dast` |
 | **IA para AppSec** | Triage, explicación, priorización, parche y verificación | El agente (Claude u otro cliente MCP) | skills, prompts, `finding_triage`, `runs_diff` |
 
@@ -45,13 +46,15 @@ Los escáneres de seguridad existen hace años. El problema nunca fue encontrar 
 - Dependencias de npm, pip/poetry/uv, Maven/Gradle, Go, Cargo, Composer, NuGet, RubyGems y más (todo lo que leen OSV-Scanner y Trivy).
 - Historial completo de git para secretos.
 - Imágenes de contenedor desde un registro, el daemon local o un `.tar`.
+- Servidores Linux on-premise, máquinas virtuales e instancias (Debian, Ubuntu, RHEL, CentOS, Rocky, AlmaLinux, Oracle, Amazon Linux, Fedora, Alpine): por SSH con llave, o con un recolector de solo lectura que se ejecuta a mano cuando no hay acceso directo (MobaXterm, consola, bastión, Ansible).
 - Aplicaciones y servicios en ejecución con las plantillas de la comunidad de Nuclei (miles de CVE, paneles expuestos, malas configuraciones, TLS).
 - Informes en Markdown, HTML autocontenido, **SARIF 2.1.0** (GitHub/GitLab code scanning, VS Code) y JSON.
 
 **No cubre (y no pretende)**
 - **Lógica de negocio y control de acceso:** IDOR, permisos mal aplicados, flujos de pago. Ningún escáner por patrones los encuentra bien. El agente puede revisarlos a mano siguiendo las rutas de la API, pero eso es revisión manual asistida, no detección automática.
 - **Pruebas de penetración completas:** Nuclei detecta lo conocido por plantillas; no reemplaza a un pentester.
-- **Seguridad en tiempo de ejecución:** no monitorea producción.
+- **Seguridad en tiempo de ejecución:** no monitorea producción ni detecta intrusiones activas.
+- **Windows Server, hipervisores (ESXi/vCenter) y nube (plano de control):** todavía no. Ver la hoja de ruta abajo.
 - **Semgrep Assistant** (la IA de Semgrep) es comercial y no está incluida; ese papel lo cumple el agente.
 
 ## Formas de usarlo
@@ -64,6 +67,28 @@ Los escáneres de seguridad existen hace años. El problema nunca fue encontrar 
 | **Escaneo programado** | Una rutina de Claude Code (`/schedule`) o `claude -p` en CI corre `scan_static` cada noche y sube el SARIF a GitHub code scanning. El triage acumulado evita repetir el ruido. |
 | **DAST después del despliegue** | Tras desplegar en staging: `scan_dast` con perfil `baseline`, luego dirigido según la tecnología detectada (skill `appsec-dast`). |
 | **Respuesta a un secreto filtrado** | Gitleaks lo ubica en el historial; la skill guía revocar, rotar, limpiar y revisar el uso indebido, en ese orden. |
+
+## Servidores: cómo se revisa uno
+
+```text
+recolector (solo lectura)  →  paquetes + configuración  →  SBOM con distribución y paquete fuente  →  Trivy (avisos de la distro)
+                                                      ↘  reglas de endurecimiento  →  hallazgos "config"
+```
+
+- **Por qué no por la red:** RHEL y Debian corrigen vulnerabilidades sin cambiar la versión del paquete. Un escáner que mira el banner ("OpenSSH 8.0") reporta CVE ya corregidos y omite otros. Leyendo el paquete instalado y su paquete fuente, Trivy usa los avisos oficiales de la distribución.
+- **Sin credenciales en la herramienta:** si no hay SSH directo, `host_collector` entrega el script, se ejecuta en el servidor con `sudo sh xolotl-collect.sh > salida.txt` y `scan_host` analiza el archivo.
+- **Lo que no copia:** llaves, hashes de `/etc/shadow` (solo nombres de cuentas sin contraseña), historiales ni variables de entorno.
+
+### Hoja de ruta
+
+| Próximo | Motor previsto |
+|---|---|
+| Red sin credenciales (`scan_network`) | Nmap + Nuclei red/SSL + testssl.sh + ssh-audit, limitado al alcance |
+| Discos de VM sin encenderlas | `trivy vm` (VMDK, AMI, snapshots EBS) |
+| Nube: plano de control | Prowler con rol de solo lectura |
+| Benchmarks CIS/STIG formales | OpenSCAP (RHEL), Lynis |
+| Windows Server | Inventario por WinRM + HardeningKitty |
+| Monitoreo continuo | Leer vulnerabilidades y evaluaciones CIS desde la API de Wazuh |
 
 ## Instalación
 
@@ -108,6 +133,8 @@ Luego, en el chat:
 | `scan_codeql` | Análisis de flujo de datos con la suite `security-extended` |
 | `scan_container_image` | Trivy sobre una imagen |
 | `scan_iac` | Trivy config sobre infraestructura como código |
+| `scan_host` | Servidor Linux por SSH con llave (en el alcance autorizado) o desde la salida del recolector |
+| `host_collector` | Escribe el recolector de solo lectura para ejecutarlo en servidores sin SSH directo |
 | `dast_scope` | Alcance autorizado para DAST: quién autorizó y con qué evidencia |
 | `scan_dast` | Nuclei por perfiles (`baseline`, `automatic`, `full`, `custom`); rechaza objetivos fuera de alcance |
 | `runs_list` · `findings_query` · `finding_get` | Navegar corridas y hallazgos, con el código alrededor de la línea |
@@ -116,7 +143,7 @@ Luego, en el chat:
 | `report_generate` | Informe Markdown, HTML, SARIF o JSON |
 
 **Prompts MCP:** `triage_run`, `fix_finding`, `review_patch`.
-**Skills:** `appsec-audit`, `appsec-triage`, `appsec-dast`, `appsec-fix`.
+**Skills:** `appsec-audit`, `appsec-triage`, `appsec-dast`, `appsec-fix`, `appsec-hosts`.
 
 ## Modelo de seguridad de la propia herramienta
 
@@ -166,10 +193,13 @@ Todo vive en `~/.xolotl` (cámbialo con `XOLOTL_HOME`):
 npm run build                          # typecheck + bundle en dist/index.js (sin dependencias en tiempo de ejecución)
 node scripts/selftest.mjs              # levanta el MCP y escanea un proyecto vulnerable generado al vuelo
 node scripts/selftest.mjs --install    # instala antes los escáneres que falten
+node scripts/validate-host.mjs         # scan_host contra trivy image en debian:12 y rockylinux:9 (CVE idénticos + 15 fallas sembradas)
 node scripts/call.mjs scan_static '{"path":"/ruta"}'   # llama cualquier tool desde la terminal
 ```
 
 Estructura: `src/scanners.ts` lanza cada herramienta, `src/parsers.ts` traduce su salida al formato común, `src/findings.ts` normaliza y deduplica, `src/store.ts` guarda corridas y triage, `src/scope.ts` aplica el alcance DAST, `src/report.ts` genera los informes. Agregar un escáner es una función en cada uno de los dos primeros.
+
+`scan_host` está validado contra `trivy image` en Debian 12, Ubuntu 24.04, Rocky 9 y AlmaLinux 9: mismos paquetes, CVE y versiones corregidas.
 
 Probado en Windows 11 con Semgrep 1.181, Bandit 1.9, OSV-Scanner 2.7, Trivy 0.76, Gitleaks 8.30 y Nuclei 3.11. Linux y macOS están contemplados (instalador y rutas), pero aún sin probar. CodeQL está integrado pero todavía no se ha probado de punta a punta.
 

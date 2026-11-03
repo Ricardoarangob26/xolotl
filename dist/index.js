@@ -3259,8 +3259,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path9) {
-      let input2 = path9;
+    function removeDotSegments(path10) {
+      let input2 = path10;
       const output2 = [];
       let nextSlash = -1;
       let len = 0;
@@ -3334,11 +3334,11 @@ var require_utils = __commonJS({
       }
       return output2.join("");
     }
-    function removeDotSegmentsRelative(path9) {
-      if (path9 === "" || path9[0] === "/") {
-        return removeDotSegments(path9);
+    function removeDotSegmentsRelative(path10) {
+      if (path10 === "" || path10[0] === "/") {
+        return removeDotSegments(path10);
       }
-      const segments = path9.split("/");
+      const segments = path10.split("/");
       const last = segments.length - 1;
       const output2 = [];
       let trailingDirectory = false;
@@ -3701,8 +3701,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path9 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path9 && path9 !== "/" ? path9 : void 0;
+        const path10 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path10 && path10 !== "/" ? path10 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7239,12 +7239,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs10, exportName) {
+    function addFormats(ajv, list, fs11, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs10[f]);
+        ajv.addFormat(f, fs11[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7253,8 +7253,8 @@ var require_dist = __commonJS({
 });
 
 // src/index.ts
-import fs9 from "node:fs";
-import path8 from "node:path";
+import fs10 from "node:fs";
+import path9 from "node:path";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -7630,8 +7630,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path9, errorMaps, issueData } = params;
-  const fullPath = [...path9, ...issueData.path || []];
+  const { data, path: path10, errorMaps, issueData } = params;
+  const fullPath = [...path10, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7746,11 +7746,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path9, key) {
+  constructor(parent, value, path10, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path9;
+    this._path = path10;
     this._key = key;
   }
   get path() {
@@ -11706,10 +11706,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path9) {
-  if (!path9)
+function getElementAtPath(obj, path10) {
+  if (!path10)
     return obj;
-  return path9.reduce((acc, key) => acc?.[key], obj);
+  return path10.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -12049,11 +12049,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path9, issues) {
+function prefixIssues(path10, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path9);
+    iss.path.unshift(path10);
     return iss;
   });
 }
@@ -12515,16 +12515,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path9 = []) => {
+  const processError = (error63, path10 = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path9, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path9, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path9, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else {
-        const fullpath = [...path9, ...issue2.path];
+        const fullpath = [...path10, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -12563,17 +12563,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path9 = []) => {
+  const processError = (error63, path10 = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path9, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path9, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path9, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else {
-        const fullpath = [...path9, ...issue2.path];
+        const fullpath = [...path10, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -12612,8 +12612,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path9 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path9) {
+  const path10 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path10) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -28164,11 +28164,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path9) {
-  if (path9.length === 0) {
+function getDotPath(path10) {
+  if (path10.length === 0) {
     return "object root";
   }
-  return path9.reduce((acc, seg, index) => {
+  return path10.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -29315,8 +29315,8 @@ function currencyCode2(_params) {
   return _stringFormat(ZodCustomStringFormat, "currency_code", currencyCode, _params);
 }
 function hash(alg, params) {
-  const enc = params?.enc ?? "hex";
-  const format = `${alg}_${enc}`;
+  const enc2 = params?.enc ?? "hex";
+  const format = `${alg}_${enc2}`;
   const regex = regexes_exports[format];
   if (!regex)
     throw new Error(`Unrecognized hash format: ${format}`);
@@ -30395,13 +30395,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path9 = ref.slice(1).split("/").filter(Boolean);
-  if (path9.length === 0) {
+  const path10 = ref.slice(1).split("/").filter(Boolean);
+  if (path10.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path9[0] === defsKey) {
-    const key = path9[1] === void 0 ? void 0 : decodeJSONPointerSegment(path9[1]);
+  if (path10[0] === defsKey) {
+    const key = path10[1] === void 0 ? void 0 : decodeJSONPointerSegment(path10[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -36735,8 +36735,13 @@ function run(file2, args, opts = {}) {
       cwd: opts.cwd,
       env: { ...process.env, ...opts.env },
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: [opts.input !== void 0 ? "pipe" : "ignore", "pipe", "pipe"]
     });
+    if (opts.input !== void 0 && child.stdin) {
+      child.stdin.on("error", () => {
+      });
+      child.stdin.end(opts.input);
+    }
     const finish = (code, error62) => {
       if (settled) return;
       settled = true;
@@ -36884,7 +36889,7 @@ import crypto from "node:crypto";
 import fs4 from "node:fs";
 import path4 from "node:path";
 var SEVERITIES = ["critical", "high", "medium", "low", "info"];
-var CATEGORIES = ["sast", "sca", "secret", "iac", "container", "dast"];
+var CATEGORIES = ["sast", "sca", "secret", "iac", "container", "host", "config", "dast"];
 var TRIAGE_STATUSES = ["open", "confirmed", "false_positive", "accepted_risk", "fixed"];
 var sevRank = (s) => SEVERITIES.indexOf(s);
 function normSeverity(v) {
@@ -36949,11 +36954,14 @@ function fingerprintOf(f) {
   switch (f.category) {
     case "sca":
     case "container":
+    case "host":
       return hash2([f.category, loc.target ?? "", f.package ? pkgKey(f.package) : "", primaryVulnId(f)]);
     case "secret":
       return hash2([f.category, loc.file, loc.startLine, loc.commit ?? ""]);
     case "dast":
       return hash2([f.category, f.ruleId, loc.url ?? loc.target]);
+    case "config":
+      return hash2([f.category, f.ruleId, loc.target]);
     default: {
       const code = f.snippet?.replace(/\s+/g, " ").trim();
       return hash2([f.category, f.ruleId, loc.file, code || loc.startLine]);
@@ -36976,7 +36984,7 @@ function dedupe(list) {
   const bySecret = /* @__PURE__ */ new Map();
   const byFp = /* @__PURE__ */ new Map();
   for (const f of list) {
-    if ((f.category === "sca" || f.category === "container") && f.package) {
+    if ((f.category === "sca" || f.category === "container" || f.category === "host") && f.package) {
       const key = `${f.category}|${f.location?.target ?? ""}|${pkgKey(f.package)}`;
       const bucket = byPkg.get(key) ?? [];
       const ids = /* @__PURE__ */ new Set([...f.ids ?? [], ...f.cve ?? []]);
@@ -37288,6 +37296,8 @@ var CAT_ES = {
   secret: "Secretos",
   iac: "Infraestructura como c\xF3digo",
   container: "Contenedores",
+  host: "Paquetes del servidor",
+  config: "Endurecimiento del servidor",
   dast: "Pruebas din\xE1micas (DAST)"
 };
 var STATUS_ES = {
@@ -37416,8 +37426,315 @@ function toSarif(meta3, findings) {
 }
 
 // src/scanners.ts
+import fs8 from "node:fs";
+import path8 from "node:path";
+
+// src/host.ts
 import fs7 from "node:fs";
 import path7 from "node:path";
+function parseCollected(text2) {
+  const out = /* @__PURE__ */ new Map();
+  let current = null;
+  for (const raw of text2.split(/\r?\n/)) {
+    const m = raw.match(/^===XOLOTL ([a-z_]+)===$/);
+    if (m) {
+      current = m[1];
+      if (!out.has(current)) out.set(current, []);
+      continue;
+    }
+    if (current && raw.trim()) out.get(current).push(raw);
+  }
+  if (!out.has("meta") || !out.has("os_release")) {
+    throw new Error("El archivo no parece salida del recolector de Xolotl (faltan las secciones meta/os_release).");
+  }
+  return out;
+}
+var kv = (lines = []) => Object.fromEntries(
+  lines.map((l) => l.match(/^([^=]+)=(.*)$/)).filter((m) => !!m).map((m) => [m[1].trim(), m[2].trim().replace(/^"(.*)"$/, "$1")])
+);
+var TRIVY_OS = {
+  debian: "debian",
+  ubuntu: "ubuntu",
+  rhel: "redhat",
+  centos: "centos",
+  rocky: "rocky",
+  almalinux: "alma",
+  ol: "oracle",
+  amzn: "amazon",
+  fedora: "fedora",
+  alpine: "alpine"
+};
+function hostInfo(s) {
+  const meta3 = kv(s.get("meta"));
+  const os2 = kv(s.get("os_release"));
+  const osId = (os2.ID ?? "").toLowerCase();
+  const trivyType = TRIVY_OS[osId] ?? null;
+  const debVer = s.get("debian_version")?.[0]?.trim();
+  const osVersion = osId === "debian" && debVer && /^\d/.test(debVer) ? debVer : os2.VERSION_ID ?? "";
+  const packages = (s.get("pkgs_deb")?.length ?? 0) + (s.get("pkgs_rpm")?.length ?? 0) + (s.get("pkgs_apk")?.length ?? 0);
+  return {
+    hostname: meta3.fqdn || meta3.hostname || "host",
+    osId,
+    osName: os2.PRETTY_NAME ?? osId,
+    osVersion,
+    trivyType,
+    kernel: meta3.kernel ?? "",
+    root: meta3.uid === "0",
+    packages
+  };
+}
+var splitEpoch = (v) => {
+  const m = v.match(/^(\d+):(.*)$/);
+  return m ? { epoch: m[1], rest: m[2] } : { epoch: "0", rest: v };
+};
+function splitDebVersion(v) {
+  const { epoch, rest } = splitEpoch(v);
+  const i = rest.lastIndexOf("-");
+  return i > 0 ? { epoch, version: rest.slice(0, i), release: rest.slice(i + 1) } : { epoch, version: rest, release: "" };
+}
+function splitSourceRpm(src) {
+  const base = src.replace(/\.(no)?src\.rpm$/, "");
+  const r = base.lastIndexOf("-");
+  const v = base.lastIndexOf("-", r - 1);
+  if (r < 0 || v < 0) return null;
+  return { name: base.slice(0, v), version: base.slice(v + 1, r), release: base.slice(r + 1) };
+}
+var enc = (s) => encodeURIComponent(s).replace(/%3A/g, ":");
+function buildSbom(s, info) {
+  if (!info.trivyType) throw new Error(`Distribuci\xF3n no soportada para vulnerabilidades: ${info.osId || "desconocida"}`);
+  const t = info.trivyType;
+  const distro = `${t}-${info.osVersion}`;
+  const osRef = `os-${t}`;
+  const prop = (name, value) => value ? [{ name: `aquasecurity:trivy:${name}`, value }] : [];
+  const comps = [];
+  for (const line of s.get("pkgs_deb") ?? []) {
+    const [, name, version2, arch, srcName, srcVersion] = line.split("	");
+    if (!name || !version2) continue;
+    const bin = splitDebVersion(version2);
+    const src = splitDebVersion(srcVersion || version2);
+    const purlVer = bin.release ? `${bin.version}-${bin.release}` : bin.version;
+    const purl = `pkg:deb/${t}/${name}@${enc(purlVer)}?arch=${arch}&distro=${distro}${bin.epoch !== "0" ? `&epoch=${bin.epoch}` : ""}`;
+    comps.push({
+      "bom-ref": purl,
+      type: "library",
+      name,
+      version: bin.epoch !== "0" ? `${bin.epoch}:${purlVer}` : purlVer,
+      purl,
+      properties: [
+        ...prop("PkgID", `${name}@${purlVer}`),
+        ...prop("PkgType", t),
+        ...prop("SrcName", srcName || name),
+        ...prop("SrcVersion", src.version),
+        ...prop("SrcRelease", src.release),
+        ...src.epoch !== "0" ? prop("SrcEpoch", src.epoch) : []
+      ]
+    });
+  }
+  for (const line of s.get("pkgs_rpm") ?? []) {
+    const [name, epochRaw, version2, release, arch, sourceRpm] = line.split("	");
+    if (!name || !version2) continue;
+    const epoch = /^\d+$/.test(epochRaw ?? "") ? epochRaw : "0";
+    const src = sourceRpm && sourceRpm !== "(none)" ? splitSourceRpm(sourceRpm) : null;
+    const purl = `pkg:rpm/${t}/${name}@${enc(`${version2}-${release}`)}?arch=${arch}&distro=${distro}${epoch !== "0" ? `&epoch=${epoch}` : ""}`;
+    comps.push({
+      "bom-ref": purl,
+      type: "library",
+      name,
+      version: `${epoch !== "0" ? `${epoch}:` : ""}${version2}-${release}`,
+      purl,
+      properties: [
+        ...prop("PkgID", `${name}@${version2}-${release}.${arch}`),
+        ...prop("PkgType", t),
+        ...src ? [...prop("SrcName", src.name), ...prop("SrcVersion", src.version), ...prop("SrcRelease", src.release)] : [],
+        ...epoch !== "0" ? prop("SrcEpoch", epoch) : []
+      ]
+    });
+  }
+  for (const line of s.get("pkgs_apk") ?? []) {
+    const m = line.trim().match(/^(.+)-([^-]+-r\d+)$/);
+    if (!m) continue;
+    const purl = `pkg:apk/alpine/${m[1]}@${enc(m[2])}?distro=${info.osVersion}`;
+    comps.push({ "bom-ref": purl, type: "library", name: m[1], version: m[2], purl, properties: [...prop("PkgType", "alpine")] });
+  }
+  const hostRef = `host-${info.hostname}`;
+  return {
+    $schema: "http://cyclonedx.org/schema/bom-1.6.schema.json",
+    bomFormat: "CycloneDX",
+    specVersion: "1.6",
+    version: 1,
+    metadata: {
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      tools: { components: [{ type: "application", name: "xolotl" }] },
+      component: { "bom-ref": hostRef, type: "application", name: info.hostname }
+    },
+    components: [
+      { "bom-ref": osRef, type: "operating-system", name: t, version: info.osVersion, properties: [...prop("Class", "os-pkgs"), ...prop("Type", t)] },
+      ...comps
+    ],
+    dependencies: [
+      { ref: hostRef, dependsOn: [osRef] },
+      { ref: osRef, dependsOn: comps.map((c) => c["bom-ref"]) },
+      ...comps.map((c) => ({ ref: c["bom-ref"], dependsOn: [] }))
+    ]
+  };
+}
+var WEAK_SSH = /(^|,)(3des-cbc|aes\d+-cbc|blowfish-cbc|cast128-cbc|arcfour\w*|hmac-md5\w*|hmac-sha1(-96)?|umac-64@openssh\.com|diffie-hellman-group1-sha1|diffie-hellman-group14-sha1|diffie-hellman-group-exchange-sha1)(,|$)/;
+var DB_PORTS = {
+  "3306": "MySQL/MariaDB",
+  "5432": "PostgreSQL",
+  "6379": "Redis",
+  "27017": "MongoDB",
+  "9200": "Elasticsearch",
+  "11211": "Memcached",
+  "1433": "SQL Server",
+  "5984": "CouchDB",
+  "2375": "API de Docker sin TLS"
+};
+var LEGACY_PORTS = { "21": "FTP", "23": "Telnet", "69": "TFTP", "512": "rexec", "513": "rlogin", "514": "rsh" };
+var STANDARD_SUID = /^\/(usr\/)?(s?bin|lib(exec)?|lib64)\//;
+function sshValue(s, key) {
+  const k = key.toLowerCase();
+  const eff = (s.get("sshd_effective") ?? []).find((l) => l.toLowerCase().startsWith(k + " "));
+  if (eff) return eff.slice(k.length + 1).trim().toLowerCase();
+  const cfg = (s.get("sshd_config") ?? []).find((l) => l.trim().toLowerCase().startsWith(k + " ") || l.trim().toLowerCase().startsWith(k + "	"));
+  return cfg?.trim().split(/\s+/).slice(1).join(" ").toLowerCase();
+}
+function hardeningChecks(s, info) {
+  const out = [];
+  const add = (c) => out.push(c);
+  const sshdKnown = (s.get("sshd_effective")?.length ?? 0) + (s.get("sshd_config")?.length ?? 0) > 0;
+  const listening = s.get("listening") ?? [];
+  const services = kv(s.get("services_active"));
+  const isActive = (svc) => (services[svc] ?? "").startsWith("active/");
+  if (sshdKnown) {
+    const root = sshValue(s, "PermitRootLogin");
+    if (root === "yes") {
+      add({ rule: "XOL-SSH-001", severity: "high", title: "SSH permite entrar como root con contrase\xF1a", file: "/etc/ssh/sshd_config", evidence: `PermitRootLogin ${root}`, description: "Un atacante puede intentar la contrase\xF1a de root directamente; si acierta, tiene el servidor completo y no queda rastro de qu\xE9 persona entr\xF3.", remediation: "PermitRootLogin no (o prohibit-password si se administra con llaves) y entrar con un usuario nominal + sudo." });
+    }
+    const pwd = sshValue(s, "PasswordAuthentication");
+    if (pwd === "yes") {
+      add({ rule: "XOL-SSH-002", severity: "medium", title: "SSH acepta contrase\xF1as", file: "/etc/ssh/sshd_config", evidence: `PasswordAuthentication ${pwd}`, description: "Las contrase\xF1as se pueden adivinar por fuerza bruta o reutilizar si se filtran en otro sistema.", remediation: "Pasar a llaves (PasswordAuthentication no) o, si no es posible, fail2ban + MFA y limitar el acceso por firewall a la red de administraci\xF3n." });
+    }
+    if (sshValue(s, "PermitEmptyPasswords") === "yes") {
+      add({ rule: "XOL-SSH-003", severity: "critical", title: "SSH permite contrase\xF1as vac\xEDas", file: "/etc/ssh/sshd_config", evidence: "PermitEmptyPasswords yes", description: "Cualquier cuenta sin contrase\xF1a es accesible desde la red sin credenciales.", remediation: "PermitEmptyPasswords no." });
+    }
+    if (sshValue(s, "X11Forwarding") === "yes") {
+      add({ rule: "XOL-SSH-004", severity: "low", title: "SSH con X11Forwarding activo", file: "/etc/ssh/sshd_config", evidence: "X11Forwarding yes", description: "En un servidor sin escritorio no se usa y ampl\xEDa la superficie de ataque del cliente.", remediation: "X11Forwarding no." });
+    }
+    const tries = Number(sshValue(s, "MaxAuthTries"));
+    if (tries > 4) {
+      add({ rule: "XOL-SSH-005", severity: "low", title: `SSH permite ${tries} intentos por conexi\xF3n`, file: "/etc/ssh/sshd_config", evidence: `MaxAuthTries ${tries}`, description: "M\xE1s intentos por conexi\xF3n aceleran la fuerza bruta.", remediation: "MaxAuthTries 3 o 4." });
+    }
+    const weak = ["ciphers", "macs", "kexalgorithms"].flatMap((k) => {
+      const v = sshValue(s, k);
+      return v ? v.split(",").filter((a) => WEAK_SSH.test(a)).map((a) => `${k}: ${a}`) : [];
+    });
+    if (weak.length) {
+      add({ rule: "XOL-SSH-006", severity: "medium", title: "SSH ofrece algoritmos criptogr\xE1ficos d\xE9biles", file: "/etc/ssh/sshd_config", evidence: weak.join("\n"), description: "CBC, SHA-1 y grupos Diffie-Hellman peque\xF1os tienen ataques conocidos o margen de seguridad insuficiente.", remediation: "Definir Ciphers, MACs y KexAlgorithms modernos (chacha20-poly1305, aes-gcm, hmac-sha2-*-etm, curve25519/sntrup) o usar la pol\xEDtica criptogr\xE1fica DEFAULT/FUTURE del sistema (RHEL: update-crypto-policies)." });
+    }
+  }
+  const uid0 = (s.get("passwd") ?? []).map((l) => l.split(":")).filter((p) => p[1] === "0" && p[0] !== "root").map((p) => p[0]);
+  if (uid0.length) {
+    add({ rule: "XOL-ACC-001", severity: "critical", title: `Cuentas con UID 0 adem\xE1s de root: ${uid0.join(", ")}`, file: "/etc/passwd", evidence: uid0.join(", "), description: "Una cuenta con UID 0 es root con otro nombre: es una t\xE9cnica cl\xE1sica de persistencia tras una intrusi\xF3n.", remediation: "Investigar qui\xE9n la cre\xF3 y cu\xE1ndo; eliminarla o asignarle un UID normal." });
+  }
+  const empty = (s.get("empty_passwords") ?? []).filter((l) => l !== "__sin_permiso__");
+  if (empty.length) {
+    add({ rule: "XOL-ACC-002", severity: "critical", title: `Cuentas sin contrase\xF1a: ${empty.join(", ")}`, file: "/etc/shadow", evidence: empty.join(", "), description: "Una cuenta sin contrase\xF1a permite entrar sin credenciales por cualquier servicio que use PAM.", remediation: "Bloquearlas (passwd -l) o asignarles contrase\xF1a." });
+  }
+  const nopasswd = (s.get("sudoers_nopasswd") ?? []).filter((l) => l !== "__sin_permiso__");
+  if (nopasswd.length) {
+    const all = nopasswd.filter((l) => /NOPASSWD:\s*ALL\b/.test(l));
+    add({ rule: "XOL-ACC-003", severity: all.length ? "medium" : "low", title: `sudo sin contrase\xF1a (${nopasswd.length} regla(s)${all.length ? `, ${all.length} con ALL` : ""})`, file: "/etc/sudoers", evidence: nopasswd.slice(0, 10).join("\n"), description: "Quien comprometa una de esas cuentas obtiene root sin conocer ninguna contrase\xF1a. Es aceptable para comandos puntuales de automatizaci\xF3n, no para ALL.", remediation: "Limitar NOPASSWD a comandos exactos (rutas absolutas) y a cuentas de servicio; quitar NOPASSWD: ALL de usuarios personales." });
+  }
+  const dockerGroup = (s.get("group_privileged") ?? []).find((l) => l.startsWith("docker:"));
+  const dockerMembers = dockerGroup?.split(":")[3]?.split(",").filter(Boolean) ?? [];
+  if (dockerMembers.length) {
+    add({ rule: "XOL-ACC-004", severity: "medium", title: `Usuarios en el grupo docker: ${dockerMembers.join(", ")}`, file: "/etc/group", evidence: dockerGroup, description: "Pertenecer al grupo docker equivale a ser root: basta montar / en un contenedor.", remediation: "Dejar solo cuentas de servicio que lo necesiten, o usar Docker rootless / sudo para comandos concretos." });
+  }
+  const running = info.kernel;
+  const installedKernels = (s.get("kernels_installed") ?? []).map((l) => l.trim());
+  const rebootFlag = (s.get("reboot_required") ?? []).includes("yes");
+  const newest = installedKernels.slice().sort((a, b) => a.localeCompare(b, void 0, { numeric: true })).pop() ?? "";
+  const runningCore = running.replace(/\.(x86_64|aarch64|i686)$/, "");
+  const kernelBehind = !!runningCore && !!newest && !newest.includes(runningCore);
+  if (rebootFlag || kernelBehind) {
+    add({ rule: "XOL-PAT-001", severity: "medium", title: "Hay parches instalados que no est\xE1n activos (reinicio pendiente)", evidence: `kernel en uso: ${running}${newest ? `
+kernel m\xE1s reciente instalado: ${newest}` : ""}${rebootFlag ? "\nel sistema marca reinicio requerido" : ""}`, description: "Las actualizaciones del kernel y de librer\xEDas base no protegen hasta reiniciar: el escaneo de paquetes las cuenta como corregidas, pero el sistema sigue ejecutando la versi\xF3n vulnerable.", remediation: "Programar un reinicio en ventana de mantenimiento." });
+  }
+  const autoUpd = s.get("auto_updates") ?? [];
+  const autoOn = autoUpd.some((l) => /"1"|yes|true/i.test(l)) || isActive("dnf-automatic.timer") || isActive("unattended-upgrades");
+  if (!autoOn) {
+    add({ rule: "XOL-PAT-002", severity: "low", title: "Sin actualizaciones de seguridad autom\xE1ticas", description: "Los parches dependen de que alguien se acuerde; las ventanas entre aviso y explotaci\xF3n hoy son de d\xEDas.", remediation: "Debian/Ubuntu: unattended-upgrades solo con el origen -security. RHEL: dnf-automatic con upgrade_type = security. O un proceso de parcheo mensual documentado." });
+  }
+  const fw = kv(s.get("firewall"));
+  const fwActive = ["firewalld", "ufw", "nftables", "iptables", "netfilter-persistent"].some((k) => fw[k] === "active") || Number(fw.nft_rules) > 5 || Number(fw.iptables_rules) > 0 || (s.get("firewall") ?? []).some((l) => /^Status: active/.test(l));
+  if (!fwActive) {
+    add({ rule: "XOL-NET-001", severity: "medium", title: "No se detect\xF3 firewall activo en el host", evidence: Object.entries(fw).map(([k, v]) => `${k}=${v}`).join("\n"), description: "Cualquier servicio que escuche en todas las interfaces queda expuesto a toda la red, aunque solo debiera usarse localmente.", remediation: "Activar firewalld/ufw/nftables permitiendo solo los puertos necesarios (y SSH solo desde la red de administraci\xF3n)." + (info.root ? "" : " Nota: sin sudo no siempre se pueden leer las reglas; confirmar con root.") });
+  }
+  const selinux = s.get("selinux")?.[0]?.trim().toLowerCase();
+  if (selinux === "disabled") add({ rule: "XOL-MAC-001", severity: "medium", title: "SELinux deshabilitado", evidence: "getenforce: Disabled", description: "SELinux contiene el da\xF1o cuando se explota un servicio: sin \xE9l, el proceso comprometido puede tocar todo lo que su usuario pueda.", remediation: "Volver a Enforcing (pasando primero por Permissive para revisar denegaciones en /var/log/audit/audit.log)." });
+  else if (selinux === "permissive") add({ rule: "XOL-MAC-002", severity: "low", title: "SELinux en modo permisivo", evidence: "getenforce: Permissive", description: "Registra pero no bloquea.", remediation: "Revisar denegaciones y pasar a Enforcing." });
+  const apparmor = s.get("apparmor")?.[0]?.trim();
+  if ((info.osId === "ubuntu" || info.osId === "debian") && apparmor && !/^(yes|y)$/i.test(apparmor)) {
+    add({ rule: "XOL-MAC-003", severity: "low", title: "AppArmor no est\xE1 activo", evidence: `apparmor: ${apparmor}`, description: "Sin perfiles de AppArmor un servicio comprometido no tiene contenci\xF3n adicional.", remediation: "Habilitar AppArmor y los perfiles de los servicios expuestos." });
+  }
+  const sc = kv(s.get("sysctl"));
+  if (sc["kernel.randomize_va_space"] && sc["kernel.randomize_va_space"] !== "2") add({ rule: "XOL-KRN-001", severity: "medium", title: "ASLR no est\xE1 completo", evidence: `kernel.randomize_va_space=${sc["kernel.randomize_va_space"]}`, description: "Sin aleatorizaci\xF3n completa de memoria, explotar fallos de memoria es mucho m\xE1s f\xE1cil.", remediation: "sysctl kernel.randomize_va_space=2 (persistir en /etc/sysctl.d/)." });
+  if (sc["net.ipv4.conf.all.accept_redirects"] === "1" || sc["net.ipv4.conf.all.accept_source_route"] === "1") add({ rule: "XOL-KRN-002", severity: "low", title: "El kernel acepta redirecciones ICMP o enrutamiento de origen", evidence: `accept_redirects=${sc["net.ipv4.conf.all.accept_redirects"]} accept_source_route=${sc["net.ipv4.conf.all.accept_source_route"]}`, description: "Permite a un equipo de la misma red desviar el tr\xE1fico del servidor (hombre en el medio).", remediation: "net.ipv4.conf.all.accept_redirects=0 y accept_source_route=0." });
+  if (sc["net.ipv4.tcp_syncookies"] === "0") add({ rule: "XOL-KRN-003", severity: "low", title: "SYN cookies desactivadas", evidence: "net.ipv4.tcp_syncookies=0", description: "El servidor es m\xE1s vulnerable a inundaciones SYN.", remediation: "net.ipv4.tcp_syncookies=1." });
+  if (sc["fs.suid_dumpable"] && sc["fs.suid_dumpable"] !== "0") add({ rule: "XOL-KRN-004", severity: "low", title: "Volcados de memoria de programas SUID permitidos", evidence: `fs.suid_dumpable=${sc["fs.suid_dumpable"]}`, description: "Un volcado de un proceso privilegiado puede contener contrase\xF1as o llaves en memoria.", remediation: "fs.suid_dumpable=0." });
+  if (sc["net.ipv4.ip_forward"] === "1" && !isActive("docker") && !isActive("containerd")) add({ rule: "XOL-KRN-005", severity: "low", title: "Reenv\xEDo de paquetes IP activo sin contenedores que lo justifiquen", evidence: "net.ipv4.ip_forward=1", description: "El servidor puede actuar como enrutador entre redes, salt\xE1ndose la segmentaci\xF3n.", remediation: "net.ipv4.ip_forward=0 si no es un enrutador, VPN o host de contenedores." });
+  const listenAll = listening.filter((l) => /(\s|^)(0\.0\.0\.0|\*|\[::\]|::):\d+\s/.test(l));
+  const portOf = (l) => l.match(/(?:0\.0\.0\.0|\*|\[::\]|::):(\d+)\s/)?.[1];
+  const exposedDb = [...new Set(listenAll.map(portOf).filter((p) => !!p && p in DB_PORTS))];
+  if (exposedDb.length) {
+    add({ rule: "XOL-NET-002", severity: "high", title: `Bases de datos o servicios internos escuchando en todas las interfaces: ${exposedDb.map((p) => `${DB_PORTS[p]} (${p})`).join(", ")}`, evidence: listenAll.filter((l) => exposedDb.includes(portOf(l) ?? "")).join("\n"), description: "Un servicio que solo usa la aplicaci\xF3n local queda alcanzable desde la red; muchos (Redis, Memcached, Elasticsearch, Docker) no traen autenticaci\xF3n por defecto.", remediation: "Escuchar solo en 127.0.0.1 o en la interfaz interna (bind-address), y filtrar el puerto en el firewall." });
+  }
+  const legacy = [...new Set(listening.map((l) => l.match(/:(\d+)\s/)?.[1]).filter((p) => !!p && p in LEGACY_PORTS))];
+  const legacyServices = ["telnet.socket", "rsh.socket", "rlogin.socket", "tftp.socket", "vsftpd", "xinetd"].filter(isActive);
+  if (legacy.length || legacyServices.length) {
+    add({ rule: "XOL-NET-003", severity: "high", title: `Servicios sin cifrado activos: ${[...legacy.map((p) => LEGACY_PORTS[p]), ...legacyServices].join(", ")}`, evidence: [...legacy, ...legacyServices].join(", "), description: "Telnet, FTP, rsh y TFTP env\xEDan credenciales y datos en claro por la red.", remediation: "Deshabilitarlos y usar SSH/SFTP." });
+  }
+  const extra = ["avahi-daemon", "cups", "rpcbind", "snmpd", "nfs-server", "smb"].filter(isActive);
+  if (extra.length) {
+    add({ rule: "XOL-SVC-001", severity: "low", title: `Servicios posiblemente innecesarios en un servidor: ${extra.join(", ")}`, evidence: extra.join(", "), description: "Cada servicio activo es superficie de ataque y requiere parches; varios de estos (avahi, cups, rpcbind) rara vez se usan en servidores.", remediation: "Deshabilitar los que no se usen (systemctl disable --now)." });
+  }
+  if (!isActive("auditd")) add({ rule: "XOL-LOG-001", severity: "low", title: "auditd no est\xE1 activo", description: "Sin auditor\xEDa del kernel es dif\xEDcil reconstruir qu\xE9 pas\xF3 tras un incidente (qui\xE9n ejecut\xF3 qu\xE9, qu\xE9 archivos cambiaron).", remediation: "Instalar y activar auditd con reglas b\xE1sicas (por ejemplo las de CIS)." });
+  const ntp = s.get("time_sync")?.[0]?.trim();
+  if (ntp === "no") add({ rule: "XOL-LOG-002", severity: "low", title: "El reloj no est\xE1 sincronizado (NTP)", description: "Con la hora corrida, los registros no se pueden correlacionar con otros sistemas y fallan los certificados y tokens con vencimiento.", remediation: "Activar chronyd o systemd-timesyncd contra los servidores NTP de la instituci\xF3n." });
+  const ww = s.get("world_writable_etc") ?? [];
+  if (ww.length) add({ rule: "XOL-FS-001", severity: "high", title: `Archivos de /etc modificables por cualquier usuario (${ww.length})`, evidence: ww.slice(0, 20).join("\n"), description: "Cualquier usuario local puede alterar configuraci\xF3n del sistema, lo que suele llevar a escalar a root.", remediation: "chmod o-w sobre esos archivos y revisar c\xF3mo quedaron as\xED." });
+  const cronW = s.get("cron_writable") ?? [];
+  if (cronW.length) add({ rule: "XOL-FS-002", severity: "high", title: `Tareas programadas modificables por cualquier usuario (${cronW.length})`, evidence: cronW.slice(0, 20).join("\n"), description: "Quien modifique una tarea de cron de root ejecuta comandos como root.", remediation: "chmod o-w y verificar el contenido de esas tareas." });
+  const oddSuid = (s.get("suid") ?? []).filter((f) => !STANDARD_SUID.test(f));
+  if (oddSuid.length) add({ rule: "XOL-FS-003", severity: "medium", title: `Binarios SUID fuera de las rutas del sistema (${oddSuid.length})`, evidence: oddSuid.slice(0, 20).join("\n"), description: "Un SUID en /opt, /home, /srv o /var no viene del sistema operativo: puede ser una puerta trasera o software que no deber\xEDa ejecutarse con privilegios.", remediation: "Verificar a qu\xE9 paquete pertenece cada uno (rpm -qf / dpkg -S); quitar el bit SUID (chmod u-s) si no es necesario." });
+  const mounts = s.get("mounts") ?? [];
+  const tmp = mounts.find((l) => l.split(" ")[1] === "/tmp");
+  if (tmp && !/noexec/.test(tmp)) add({ rule: "XOL-FS-004", severity: "low", title: "/tmp permite ejecutar programas", evidence: tmp, description: "Muchos ataques descargan y ejecutan su carga en /tmp.", remediation: "Montar /tmp con nodev,nosuid,noexec (verificar antes que ninguna aplicaci\xF3n lo necesite)." });
+  if (!info.root) {
+    add({ rule: "XOL-INFO-001", severity: "info", title: "Recolecci\xF3n sin root: comprobaciones parciales", description: "Sin sudo no se pudo leer la configuraci\xF3n efectiva de SSH, sudoers, /etc/shadow ni las reglas del firewall; esas comprobaciones pueden faltar.", remediation: "Repetir la recolecci\xF3n con sudo para cobertura completa." });
+  }
+  return out;
+}
+function checksToFindings(checks, info) {
+  return checks.map((c) => ({
+    tool: "xolotl-host",
+    category: "config",
+    severity: c.severity,
+    ruleId: c.rule,
+    title: c.title,
+    description: c.description,
+    location: { target: info.hostname, file: c.file },
+    evidence: c.evidence,
+    remediation: c.remediation
+  }));
+}
+function writeArtifacts(dir, text2, sbom) {
+  fs7.writeFileSync(path7.join(dir, "host-collect.txt"), text2);
+  const file2 = path7.join(dir, "host.cdx.json");
+  fs7.writeFileSync(file2, JSON.stringify(sbom));
+  return file2;
+}
 
 // src/parsers.ts
 var firstSentence = (s, max = 140) => {
@@ -37573,14 +37890,14 @@ function parseOsv(data, root) {
   }
   return out;
 }
-function parseTrivy(data, root, mode) {
+function parseTrivy(data, root, mode, hostName) {
   const out = [];
   const artifact = data?.ArtifactName;
   for (const res of data?.Results ?? []) {
-    const file2 = mode === "image" ? void 0 : relPath(root, res.Target);
-    const target = mode === "image" ? `${artifact} \xB7 ${res.Target}` : void 0;
+    const file2 = mode === "image" || mode === "host" ? void 0 : relPath(root, res.Target);
+    const target = mode === "image" ? `${artifact} \xB7 ${res.Target}` : mode === "host" ? hostName : void 0;
     for (const v of res.Vulnerabilities ?? []) {
-      const category = mode === "image" ? "container" : "sca";
+      const category = mode === "image" ? "container" : mode === "host" ? "host" : "sca";
       const ids = [v.VulnerabilityID, ...v.VendorIDs ?? []].filter(Boolean);
       out.push({
         tool: "trivy",
@@ -37684,7 +38001,7 @@ function parseNuclei(jsonl, secrets = []) {
 // src/scanners.ts
 var exe = (t, args, opts) => run(t.cmd, [...t.prefix, ...args], opts);
 function readJson(file2) {
-  return JSON.parse(fs7.readFileSync(file2, "utf8"));
+  return JSON.parse(fs8.readFileSync(file2, "utf8"));
 }
 async function guarded(id, body) {
   const tool = resolveTool(id);
@@ -37705,7 +38022,7 @@ async function guarded(id, body) {
 }
 function needOutput(file2, r, what) {
   if (r.timedOut) throw new Error(`${what} super\xF3 el tiempo l\xEDmite`);
-  if (!fs7.existsSync(file2) || fs7.statSync(file2).size === 0) {
+  if (!fs8.existsSync(file2) || fs8.statSync(file2).size === 0) {
     throw new Error(`${what} no produjo resultados (c\xF3digo ${r.code}): ${tail(r)}`);
   }
 }
@@ -37716,14 +38033,14 @@ function hasFiles(root, exts, excludes, budget = 3e4) {
     const dir = stack.pop();
     let entries;
     try {
-      entries = fs7.readdirSync(dir, { withFileTypes: true });
+      entries = fs8.readdirSync(dir, { withFileTypes: true });
     } catch {
       continue;
     }
     for (const e of entries) {
       seen++;
       if (e.isDirectory()) {
-        if (!excludes.includes(e.name) && !e.name.startsWith(".")) stack.push(path7.join(dir, e.name));
+        if (!excludes.includes(e.name) && !e.name.startsWith(".")) stack.push(path8.join(dir, e.name));
       } else if (exts.some((x) => e.name.endsWith(x))) return true;
     }
   }
@@ -37731,7 +38048,7 @@ function hasFiles(root, exts, excludes, budget = 3e4) {
 }
 function scanSemgrep(ctx, configs) {
   return guarded("semgrep", async (t) => {
-    const out = path7.join(ctx.dir, "semgrep.json");
+    const out = path8.join(ctx.dir, "semgrep.json");
     const args = [
       "scan",
       "--json",
@@ -37747,7 +38064,7 @@ function scanSemgrep(ctx, configs) {
     ];
     const opts = { cwd: ctx.root, timeoutMs: ctx.timeoutMs, env: { PYTHONUTF8: "1" } };
     let r = await exe(t, args, opts);
-    if (!r.timedOut && (!fs7.existsSync(out) || fs7.statSync(out).size === 0)) {
+    if (!r.timedOut && (!fs8.existsSync(out) || fs8.statSync(out).size === 0)) {
       r = await exe(t, args.filter((a) => a !== "--quiet"), opts);
     }
     needOutput(out, r, "semgrep");
@@ -37761,8 +38078,8 @@ function scanBandit(ctx) {
     return Promise.resolve({ run: { tool: "bandit", status: "skipped", message: "no hay archivos Python" }, findings: [] });
   }
   return guarded("bandit", async (t) => {
-    const out = path7.join(ctx.dir, "bandit.json");
-    const exclude = ctx.excludes.flatMap((e) => [path7.join(ctx.root, e), `*/${e}/*`]).join(",");
+    const out = path8.join(ctx.dir, "bandit.json");
+    const exclude = ctx.excludes.flatMap((e) => [path8.join(ctx.root, e), `*/${e}/*`]).join(",");
     const r = await exe(t, ["-r", ctx.root, "-f", "json", "-o", out, "-q", "-x", exclude], { timeoutMs: ctx.timeoutMs });
     needOutput(out, r, "bandit");
     return { findings: parseBandit(readJson(out), ctx.root) };
@@ -37772,8 +38089,8 @@ var CODEQL_NO_BUILD = ["javascript", "python", "ruby", "java", "csharp", "action
 function scanCodeql(ctx, opts) {
   return guarded("codeql", async (t) => {
     const lang = opts.language === "typescript" || opts.language === "javascript-typescript" ? "javascript" : opts.language;
-    const db = path7.join(ctx.dir, "codeql-db");
-    const out = path7.join(ctx.dir, "codeql.sarif");
+    const db = path8.join(ctx.dir, "codeql-db");
+    const out = path8.join(ctx.dir, "codeql.sarif");
     const buildMode = opts.buildCommand ? "manual" : opts.buildMode ?? (CODEQL_NO_BUILD.includes(lang) ? "none" : "autobuild");
     const create = [
       "database",
@@ -37794,13 +38111,13 @@ function scanCodeql(ctx, opts) {
       timeoutMs: ctx.timeoutMs
     });
     needOutput(out, r2, "codeql analyze");
-    if (!opts.keepDb) fs7.rmSync(db, { recursive: true, force: true });
+    if (!opts.keepDb) fs8.rmSync(db, { recursive: true, force: true });
     return { findings: parseSarif(readJson(out), ctx.root, "codeql"), message: `lenguaje ${lang}, suite ${suite}` };
   });
 }
 function scanOsv(ctx) {
   return guarded("osv-scanner", async (t) => {
-    const out = path7.join(ctx.dir, "osv.json");
+    const out = path8.join(ctx.dir, "osv.json");
     const v = await toolVersion(t) ?? "2";
     const args = v.startsWith("1.") ? ["--format", "json", "--output", out, "-r", ctx.root] : ["scan", "source", "-r", "--format", "json", "--output", out, ctx.root];
     const r = await exe(t, args, { cwd: ctx.root, timeoutMs: ctx.timeoutMs });
@@ -37812,7 +38129,7 @@ function scanOsv(ctx) {
 }
 function scanTrivyFs(ctx, scanners, subcommand = "fs") {
   return guarded("trivy", async (t) => {
-    const out = path7.join(ctx.dir, `trivy-${subcommand}.json`);
+    const out = path8.join(ctx.dir, `trivy-${subcommand}.json`);
     const args = [
       subcommand,
       ...subcommand === "fs" ? ["--scanners", scanners.join(",")] : [],
@@ -37836,7 +38153,7 @@ function scanTrivyFs(ctx, scanners, subcommand = "fs") {
 }
 function scanTrivyImage(dir, image, scanners, timeoutMs) {
   return guarded("trivy", async (t) => {
-    const out = path7.join(dir, "trivy-image.json");
+    const out = path8.join(dir, "trivy-image.json");
     const r = await exe(
       t,
       ["image", "--scanners", scanners.join(","), "--format", "json", "--output", out, "--quiet", "--timeout", `${Math.round(timeoutMs / 6e4)}m`, image],
@@ -37848,13 +38165,13 @@ function scanTrivyImage(dir, image, scanners, timeoutMs) {
 }
 function scanGitleaks(ctx, mode) {
   return guarded("gitleaks", async (t) => {
-    const useGit = mode === "git" || mode === "auto" && fs7.existsSync(path7.join(ctx.root, ".git"));
-    const out = path7.join(ctx.dir, "gitleaks.json");
+    const useGit = mode === "git" || mode === "auto" && fs8.existsSync(path8.join(ctx.root, ".git"));
+    const out = path8.join(ctx.dir, "gitleaks.json");
     const args = [useGit ? "git" : "dir", ctx.root, "--report-format", "json", "--report-path", out, "--redact", "--no-banner", "--exit-code", "0", "--log-level", "error"];
-    if (!useGit && !fs7.existsSync(path7.join(ctx.root, ".gitleaks.toml"))) {
-      const cfg = path7.join(ctx.dir, "gitleaks.toml");
+    if (!useGit && !fs8.existsSync(path8.join(ctx.root, ".gitleaks.toml"))) {
+      const cfg = path8.join(ctx.dir, "gitleaks.toml");
       const paths = ctx.excludes.map((e) => `  '''(^|[\\\\/])${e.replace(/\./g, "\\.")}([\\\\/]|$)''',`).join("\n");
-      fs7.writeFileSync(cfg, `[extend]
+      fs8.writeFileSync(cfg, `[extend]
 useDefault = true
 
 [[allowlists]]
@@ -37874,9 +38191,9 @@ var BASELINE_TAGS = ["tech", "misconfig", "exposure", "cve", "ssl", "panel"];
 var INTRUSIVE_TAGS = ["dos", "intrusive", "fuzz", "bruteforce", "default-login", "rce"];
 function scanNuclei(dir, o) {
   return guarded("nuclei", async (t) => {
-    const out = path7.join(dir, "nuclei.jsonl");
-    const list = path7.join(dir, "targets.txt");
-    fs7.writeFileSync(list, o.targets.join("\n"));
+    const out = path8.join(dir, "nuclei.jsonl");
+    const list = path8.join(dir, "targets.txt");
+    fs8.writeFileSync(list, o.targets.join("\n"));
     const args = ["-l", list, "-jsonl", "-o", out, "-silent", "-nc", "-duc", "-or", "-rl", String(o.rateLimit), "-c", String(o.concurrency), "-timeout", "10", "-retries", "1"];
     if (o.profile === "baseline") args.push("-tags", BASELINE_TAGS.join(","));
     if (o.profile === "automatic") args.push("-as");
@@ -37888,16 +38205,16 @@ function scanNuclei(dir, o) {
     for (const h of o.headers ?? []) args.push("-H", h);
     const r = await exe(t, args, { timeoutMs: o.timeoutMs });
     if (r.timedOut) throw new Error("nuclei super\xF3 el tiempo l\xEDmite (los resultados parciales quedan en nuclei.jsonl)");
-    if (!fs7.existsSync(out)) {
+    if (!fs8.existsSync(out)) {
       if (r.code === 0) return { findings: [], message: "sin coincidencias" };
       throw new Error(`nuclei fall\xF3 (c\xF3digo ${r.code}): ${tail(r)}`);
     }
     const secretValues = (o.headers ?? []).map((h) => h.split(":").slice(1).join(":").trim());
-    const findings = parseNuclei(fs7.readFileSync(out, "utf8"), secretValues);
+    const findings = parseNuclei(fs8.readFileSync(out, "utf8"), secretValues);
     if (secretValues.length) {
-      let raw = fs7.readFileSync(out, "utf8");
+      let raw = fs8.readFileSync(out, "utf8");
       for (const s of secretValues) if (s.length >= 6) raw = raw.split(s).join("[REDACTADO]");
-      fs7.writeFileSync(out, raw);
+      fs8.writeFileSync(out, raw);
     }
     return { findings, message: `perfil ${o.profile}, ${o.targets.length} objetivo(s), ${o.rateLimit} req/s` };
   });
@@ -37915,9 +38232,191 @@ async function limited(tasks, max) {
   );
   return results;
 }
+async function collectViaSsh(o, script) {
+  const ssh = which("ssh");
+  if (!ssh) throw new Error("No se encontr\xF3 el cliente ssh en el PATH.");
+  if (!/^[A-Za-z0-9_][A-Za-z0-9._-]*(@[A-Za-z0-9_[][A-Za-z0-9._:[\]-]*)?$/.test(o.target)) throw new Error(`Destino SSH no v\xE1lido: ${o.target}`);
+  const args = [
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=15",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    ...o.port ? ["-p", String(o.port)] : [],
+    ...o.identityFile ? ["-i", o.identityFile] : [],
+    "--",
+    o.target,
+    o.sudo ? "sudo -n sh -s" : "sh -s"
+  ];
+  const r = await run(ssh, args, { input: script, timeoutMs: o.timeoutMs, maxStdout: 32 * 1024 * 1024 });
+  if (r.timedOut) throw new Error("La recolecci\xF3n por SSH super\xF3 el tiempo l\xEDmite.");
+  if (!r.stdout.includes("===XOLOTL meta===")) {
+    const why = tail(r, 6);
+    const hint = /a password is required|sudo:/.test(why) ? " (sudo pide contrase\xF1a: usa sudo=false, o el modo collected_file desde tu terminal)" : "";
+    throw new Error(`No se pudo recolectar por SSH (c\xF3digo ${r.code}): ${why}${hint}`);
+  }
+  return r.stdout;
+}
+async function scanHostText(dir, text2, ignoreUnfixed, timeoutMs) {
+  const sections = parseCollected(text2);
+  const info = hostInfo(sections);
+  const checks = hardeningChecks(sections, info);
+  const config2 = {
+    run: { tool: "xolotl-host", status: "ok", count: checks.length, message: `${info.osName} \xB7 kernel ${info.kernel} \xB7 ${info.root ? "con root" : "sin root (parcial)"}` },
+    findings: checksToFindings(checks, info)
+  };
+  if (!info.trivyType) {
+    fs8.writeFileSync(path8.join(dir, "host-collect.txt"), text2);
+    return { info, outcomes: [config2, { run: { tool: "trivy", status: "skipped", message: `distribuci\xF3n no soportada para vulnerabilidades (${info.osId})` }, findings: [] }] };
+  }
+  const sbomFile = writeArtifacts(dir, text2, buildSbom(sections, info));
+  const vulns = await guarded("trivy", async (t) => {
+    const out = path8.join(dir, "trivy-host.json");
+    const args = ["sbom", "--scanners", "vuln", "--format", "json", "--output", out, "--quiet", "--timeout", `${Math.round(timeoutMs / 6e4)}m`, ...ignoreUnfixed ? ["--ignore-unfixed"] : [], sbomFile];
+    const r = await exe(t, args, { timeoutMs });
+    needOutput(out, r, "trivy sbom");
+    const findings = parseTrivy(readJson(out), null, "host", info.hostname);
+    const fixable = findings.filter((f) => f.package?.fixedVersion).length;
+    return { findings, message: `${info.packages} paquetes de ${info.osName}; ${fixable} de ${findings.length} con parche publicado` };
+  });
+  return { info, outcomes: [config2, vulns] };
+}
+
+// src/collector.sh
+var collector_default = `#!/bin/sh
+# Xolotl \u2014 recolector de estado de un servidor Linux. SOLO LECTURA.
+#
+# No instala, no cambia ni reinicia nada. No copia secretos: ni llaves, ni contenido de
+# /etc/shadow (solo los NOMBRES de cuentas sin contrase\xF1a), ni historiales, ni variables de entorno.
+# Con sudo ve m\xE1s (sshd -T, sudoers, procesos de cada puerto); sin sudo igual sirve para los
+# paquetes y la mayor\xEDa de las comprobaciones.
+#
+#   sudo sh xolotl-collect.sh > xolotl-$(hostname -s).txt
+#
+# La salida es texto plano en secciones "===XOLOTL nombre===" que lee scan_host.
+
+LC_ALL=C
+export LC_ALL
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+sec() { printf '\\n===XOLOTL %s===\\n' "$1"; }
+has() { command -v "$1" >/dev/null 2>&1; }
+# Corta comandos que podr\xEDan colgarse (find en discos grandes, systemctl en hosts raros).
+lim() { if has timeout; then timeout 60 "$@"; else "$@"; fi; }
+
+sec meta
+echo "version=1"
+echo "fecha=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"
+echo "hostname=$(hostname 2>/dev/null)"
+echo "fqdn=$(hostname -f 2>/dev/null)"
+echo "uid=$(id -u)"
+echo "kernel=$(uname -r)"
+echo "arch=$(uname -m)"
+echo "uptime_s=$(cut -d. -f1 /proc/uptime 2>/dev/null)"
+
+sec os_release
+cat /etc/os-release 2>/dev/null
+sec debian_version
+cat /etc/debian_version 2>/dev/null
+sec redhat_release
+cat /etc/redhat-release 2>/dev/null
+
+# \u2500\u2500 Paquetes: lo que decide las vulnerabilidades \u2500\u2500
+if has dpkg-query; then
+  sec pkgs_deb
+  dpkg-query -W -f='\${db:Status-Abbrev}\\t\${Package}\\t\${Version}\\t\${Architecture}\\t\${source:Package}\\t\${source:Version}\\n' 2>/dev/null | grep '^ii'
+fi
+if has rpm; then
+  sec pkgs_rpm
+  rpm -qa --qf '%{NAME}\\t%{EPOCHNUM}\\t%{VERSION}\\t%{RELEASE}\\t%{ARCH}\\t%{SOURCERPM}\\n' 2>/dev/null | grep -v '^gpg-pubkey'
+fi
+if has apk; then
+  sec pkgs_apk
+  apk info -v 2>/dev/null
+fi
+
+sec kernels_installed
+if has rpm; then rpm -q kernel kernel-core 2>/dev/null | grep -v 'not installed'; fi
+if has dpkg-query; then dpkg-query -W -f='\${db:Status-Abbrev} \${Package}\\n' 'linux-image-[0-9]*' 2>/dev/null | awk '$1=="ii"{print $2}'; fi
+sec reboot_required
+[ -f /var/run/reboot-required ] && echo "yes"
+if has needs-restarting; then needs-restarting -r >/dev/null 2>&1; [ $? -eq 1 ] && echo "yes"; fi
+
+# \u2500\u2500 Red \u2500\u2500
+sec listening
+if has ss; then ss -H -tulpn 2>/dev/null || ss -tulpn 2>/dev/null; elif has netstat; then netstat -tulpn 2>/dev/null; fi
+
+# \u2500\u2500 SSH \u2500\u2500
+sec sshd_effective
+if has sshd && [ "$(id -u)" = "0" ]; then sshd -T 2>/dev/null; fi
+sec sshd_config
+grep -hEv '^\\s*(#|$)' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf 2>/dev/null
+
+# \u2500\u2500 Cuentas (sin secretos) \u2500\u2500
+sec passwd
+cut -d: -f1,3,4,6,7 /etc/passwd 2>/dev/null
+sec empty_passwords
+if [ -r /etc/shadow ]; then awk -F: '($2==""){print $1}' /etc/shadow 2>/dev/null; else echo "__sin_permiso__"; fi
+sec sudoers_nopasswd
+if [ -r /etc/sudoers ]; then grep -hE '^[^#].*NOPASSWD' /etc/sudoers /etc/sudoers.d/* 2>/dev/null; else echo "__sin_permiso__"; fi
+sec group_privileged
+getent group docker wheel sudo adm 2>/dev/null
+sec login_defs
+grep -E '^\\s*(PASS_MAX_DAYS|PASS_MIN_DAYS|PASS_MIN_LEN|UMASK|ENCRYPT_METHOD)' /etc/login.defs 2>/dev/null
+
+# \u2500\u2500 Endurecimiento \u2500\u2500
+sec selinux
+if has getenforce; then getenforce 2>/dev/null; fi
+sec apparmor
+if has aa-enabled; then aa-enabled 2>/dev/null; elif [ -f /sys/module/apparmor/parameters/enabled ]; then cat /sys/module/apparmor/parameters/enabled; fi
+sec firewall
+for s in firewalld ufw nftables iptables netfilter-persistent; do
+  if has systemctl; then printf '%s=%s\\n' "$s" "$(systemctl is-active "$s" 2>/dev/null)"; fi
+done
+if has ufw && [ "$(id -u)" = "0" ]; then ufw status 2>/dev/null | head -1; fi
+if has nft && [ "$(id -u)" = "0" ]; then printf 'nft_rules=%s\\n' "$(nft list ruleset 2>/dev/null | grep -c .)"; fi
+if has iptables && [ "$(id -u)" = "0" ]; then printf 'iptables_rules=%s\\n' "$(iptables -S 2>/dev/null | grep -vc '^-P')"; fi
+sec sysctl
+for k in kernel.randomize_va_space net.ipv4.ip_forward net.ipv4.conf.all.accept_redirects net.ipv4.conf.all.send_redirects \\
+         net.ipv4.conf.all.accept_source_route net.ipv4.tcp_syncookies net.ipv4.conf.all.rp_filter fs.suid_dumpable \\
+         kernel.kptr_restrict kernel.dmesg_restrict fs.protected_symlinks fs.protected_hardlinks; do
+  printf '%s=%s\\n' "$k" "$(sysctl -n "$k" 2>/dev/null)"
+done
+sec services_enabled
+if has systemctl; then lim systemctl list-unit-files --type=service --state=enabled --no-legend --no-pager 2>/dev/null | awk '{print $1}'; fi
+sec services_active
+for s in auditd chronyd chrony systemd-timesyncd ntpd dnf-automatic.timer unattended-upgrades apt-daily-upgrade.timer fail2ban \\
+         telnet.socket rsh.socket rlogin.socket tftp.socket vsftpd xinetd avahi-daemon cups snmpd rpcbind nfs-server smb docker containerd; do
+  if has systemctl; then printf '%s=%s/%s\\n' "$s" "$(systemctl is-active "$s" 2>/dev/null)" "$(systemctl is-enabled "$s" 2>/dev/null)"; fi
+done
+sec time_sync
+if has timedatectl; then timedatectl show -p NTPSynchronized --value 2>/dev/null; fi
+sec auto_updates
+grep -hs '^\\s*APT::Periodic::Unattended-Upgrade' /etc/apt/apt.conf.d/* 2>/dev/null
+grep -hs '^\\s*apply_updates' /etc/dnf/automatic.conf 2>/dev/null
+sec mounts
+grep -E ' (/tmp|/var/tmp|/dev/shm|/home) ' /proc/mounts 2>/dev/null
+
+# \u2500\u2500 Archivos \u2500\u2500
+sec suid
+lim find /usr /bin /sbin /opt /srv /home /var -xdev -type f -perm -4000 2>/dev/null
+sec world_writable_etc
+lim find /etc -xdev -type f -perm -0002 2>/dev/null
+sec cron_writable
+lim find /etc/cron* /var/spool/cron -xdev -type f -perm -0002 2>/dev/null
+
+# \u2500\u2500 Contenedores \u2500\u2500
+sec docker
+if has docker && [ "$(id -u)" = "0" ]; then docker ps --format '{{.Image}}\\t{{.Names}}\\t{{.Ports}}' 2>/dev/null; fi
+
+sec fin
+echo ok
+`;
 
 // src/scope.ts
-import fs8 from "node:fs";
+import fs9 from "node:fs";
 import net from "node:net";
 var BUILTIN = ["localhost", "127.0.0.1", "::1"].map((value) => ({
   value,
@@ -37927,7 +38426,7 @@ var BUILTIN = ["localhost", "127.0.0.1", "::1"].map((value) => ({
 }));
 function loadScope() {
   try {
-    const data = JSON.parse(fs8.readFileSync(SCOPE_FILE, "utf8"));
+    const data = JSON.parse(fs9.readFileSync(SCOPE_FILE, "utf8"));
     return Array.isArray(data?.targets) ? data.targets : [];
   } catch {
     return [];
@@ -37935,7 +38434,7 @@ function loadScope() {
 }
 function saveScope(entries) {
   ensureDirs();
-  fs8.writeFileSync(SCOPE_FILE, JSON.stringify({ targets: entries }, null, 2));
+  fs9.writeFileSync(SCOPE_FILE, JSON.stringify({ targets: entries }, null, 2));
 }
 function normalizeEntry(value) {
   const v = value.trim().toLowerCase();
@@ -38013,8 +38512,8 @@ function progress(extra, done, total, message) {
   });
 }
 function resolveDir(p) {
-  const abs = path8.resolve(p);
-  if (!fs9.existsSync(abs) || !fs9.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
+  const abs = path9.resolve(p);
+  if (!fs10.existsSync(abs) || !fs10.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
   return abs;
 }
 function summaryText(meta3, findings, top = 15) {
@@ -38207,10 +38706,85 @@ server.registerTool(
   }
 );
 server.registerTool(
+  "host_collector",
+  {
+    title: "Recolector para servidores Linux",
+    description: "Escribe el script de solo lectura que re\xFAne paquetes y configuraci\xF3n de un servidor Linux, para ejecutarlo a mano (MobaXterm, consola, Ansible) cuando no hay SSH directo desde aqu\xED. Luego scan_host con collected_file analiza su salida.",
+    inputSchema: { output_path: external_exports.string().optional().describe("D\xF3nde escribir el script (por defecto ~/.xolotl/xolotl-collect.sh)") }
+  },
+  async ({ output_path }) => {
+    ensureDirs();
+    const file2 = path9.resolve(output_path ?? path9.join(HOME, "xolotl-collect.sh"));
+    fs10.mkdirSync(path9.dirname(file2), { recursive: true });
+    fs10.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+    return text(
+      [
+        `Script escrito en ${file2} (${collector_default.split("\n").length} l\xEDneas, solo lectura: no instala ni cambia nada y no copia secretos).`,
+        "",
+        "En el servidor:",
+        "  1. Subir el archivo (SFTP de MobaXterm, scp) o pegarlo:  cat > ~/xolotl-collect.sh   (pegar, luego Ctrl+D)",
+        "  2. sudo sh ~/xolotl-collect.sh > ~/xolotl-$(hostname -s).txt",
+        "     (sin sudo tambi\xE9n funciona, con menos comprobaciones)",
+        "  3. Descargar ~/xolotl-<host>.txt y pasarlo a scan_host con collected_file."
+      ].join("\n")
+    );
+  }
+);
+server.registerTool(
+  "scan_host",
+  {
+    title: "Escanear un servidor Linux",
+    description: "Vulnerabilidades de los paquetes del sistema (Trivy con los avisos de la distribuci\xF3n: entiende los parches retroportados de RHEL/Debian) y endurecimiento (SSH, cuentas, sudo, firewall, SELinux/AppArmor, kernel, servicios expuestos, SUID, reinicio pendiente). Por SSH con llave (el host debe estar en dast_scope) o desde la salida de host_collector. Solo lectura.",
+    inputSchema: {
+      target: external_exports.string().optional().describe("usuario@host para recolectar por SSH (solo llave o agente; nunca pide contrase\xF1a)"),
+      port: external_exports.number().int().min(1).max(65535).optional(),
+      identity_file: external_exports.string().optional().describe("Llave privada SSH a usar"),
+      sudo: external_exports.boolean().optional().describe("Ejecutar el recolector con sudo -n (por defecto true; si sudo pide contrase\xF1a, falla en vez de preguntar)"),
+      collected_file: external_exports.string().optional().describe("Salida de host_collector ejecutado a mano en el servidor"),
+      ignore_unfixed: external_exports.boolean().optional().describe("Omitir vulnerabilidades sin parche publicado por la distribuci\xF3n"),
+      timeout_minutes: external_exports.number().min(1).max(60).optional()
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true }
+  },
+  async (a, extra) => {
+    if (!!a.target === !!a.collected_file) return fail("Indica target (SSH) o collected_file, uno de los dos.");
+    const timeoutMs = minutes(a.timeout_minutes ?? 15);
+    let collected;
+    let via;
+    try {
+      if (a.target) {
+        const host = a.target.split("@").pop();
+        if (!matchScope(host)) {
+          return fail(`${host} no est\xE1 en el alcance autorizado. Confirma con el usuario que puede revisarlo y reg\xEDstralo con dast_scope action=add.`);
+        }
+        progress(extra, 0, 2, `recolectando en ${a.target}`);
+        collected = await collectViaSsh({ target: a.target, port: a.port, identityFile: a.identity_file, sudo: a.sudo ?? true, timeoutMs }, collector_default);
+        via = `ssh ${a.target}`;
+      } else {
+        const file2 = path9.resolve(a.collected_file);
+        if (!fs10.existsSync(file2)) return fail(`No existe ${file2}`);
+        collected = fs10.readFileSync(file2, "utf8");
+        via = file2;
+      }
+    } catch (e) {
+      return fail(e.message);
+    }
+    const { meta: meta3, dir } = newRun("host", "servidor", { via });
+    try {
+      progress(extra, 1, 2, "analizando paquetes y configuraci\xF3n");
+      const { info, outcomes } = await scanHostText(dir, collected, !!a.ignore_unfixed, timeoutMs);
+      meta3.target = `${info.hostname} (${info.osName})`;
+      return text(await finishRun(meta3, outcomes, null));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
   "dast_scope",
   {
-    title: "Alcance autorizado para DAST",
-    description: "Lista, agrega o quita objetivos autorizados para pruebas din\xE1micas. Agregar exige qui\xE9n autoriz\xF3 y la evidencia (contrato, ticket, ser due\xF1o del sistema). Solo agrega objetivos que el usuario confirm\xF3 expl\xEDcitamente que puede probar.",
+    title: "Alcance autorizado (DAST y servidores)",
+    description: "Lista, agrega o quita objetivos autorizados para pruebas contra sistemas en ejecuci\xF3n (scan_dast y scan_host por SSH). Agregar exige qui\xE9n autoriz\xF3 y la evidencia (contrato, ticket, ser due\xF1o del sistema). Solo agrega objetivos que el usuario confirm\xF3 expl\xEDcitamente que puede probar.",
     inputSchema: {
       action: external_exports.enum(["list", "add", "remove"]),
       target: external_exports.string().optional().describe("URL, host, host:puerto, *.dominio o CIDR IPv4 (/16 o m\xE1s peque\xF1o)"),
@@ -38386,7 +38960,7 @@ server.registerTool(
             const mark = ln >= loc.startLine && ln <= (loc.endLine ?? loc.startLine) ? ">" : " ";
             return `${mark}${String(ln).padStart(5)} | ${l}`;
           }).join("\n");
-          out.push("", `C\xF3digo (${path8.join(root, loc.file)}):`, numbered);
+          out.push("", `C\xF3digo (${path9.join(root, loc.file)}):`, numbered);
         }
       }
       return text(out.join("\n"));
@@ -38473,9 +39047,9 @@ server.registerTool(
       const fmt = a.format ?? "md";
       const incl = a.include_suppressed ?? true;
       const body = fmt === "md" ? toMarkdown(meta3, findings, incl) : fmt === "html" ? toHtml(meta3, findings, incl) : JSON.stringify(fmt === "sarif" ? toSarif(meta3, findings) : { meta: meta3, findings }, null, 2);
-      const file2 = path8.resolve(a.output_path ?? path8.join(runDir(meta3.id), `informe.${fmt}`));
-      fs9.mkdirSync(path8.dirname(file2), { recursive: true });
-      fs9.writeFileSync(file2, body);
+      const file2 = path9.resolve(a.output_path ?? path9.join(runDir(meta3.id), `informe.${fmt}`));
+      fs10.mkdirSync(path9.dirname(file2), { recursive: true });
+      fs10.writeFileSync(file2, body);
       return text(`Informe ${fmt.toUpperCase()} escrito en ${file2} (${meta3.summary.total} hallazgos activos).`);
     } catch (e) {
       return fail(e.message);

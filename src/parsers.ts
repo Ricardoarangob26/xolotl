@@ -166,14 +166,14 @@ export function parseOsv(data: any, root: string): RawFinding[] {
 }
 
 // ───────────── Trivy (JSON) ─────────────
-export function parseTrivy(data: any, root: string | null, mode: "fs" | "image" | "config"): RawFinding[] {
+export function parseTrivy(data: any, root: string | null, mode: "fs" | "image" | "config" | "host", hostName?: string): RawFinding[] {
   const out: RawFinding[] = [];
   const artifact = data?.ArtifactName;
   for (const res of data?.Results ?? []) {
-    const file = mode === "image" ? undefined : relPath(root, res.Target);
-    const target = mode === "image" ? `${artifact} · ${res.Target}` : undefined;
+    const file = mode === "image" || mode === "host" ? undefined : relPath(root, res.Target);
+    const target = mode === "image" ? `${artifact} · ${res.Target}` : mode === "host" ? hostName : undefined;
     for (const v of res.Vulnerabilities ?? []) {
-      const category: Category = mode === "image" ? "container" : "sca";
+      const category: Category = mode === "image" ? "container" : mode === "host" ? "host" : "sca";
       const ids = [v.VulnerabilityID, ...(v.VendorIDs ?? [])].filter(Boolean);
       out.push({
         tool: "trivy",

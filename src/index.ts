@@ -20,7 +20,10 @@ import {
   scanSemgrep,
   scanTrivyFs,
   scanTrivyImage,
+  collectViaSsh,
+  scanHostText,
 } from "./scanners.js";
+import COLLECTOR from "./collector.sh";
 import { addScope, builtinScope, loadScope, matchScope, removeScope } from "./scope.js";
 import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage } from "./store.js";
 
@@ -266,12 +269,93 @@ server.registerTool(
   },
 );
 
+// ═════════════ Servidores ═════════════
+
+server.registerTool(
+  "host_collector",
+  {
+    title: "Recolector para servidores Linux",
+    description:
+      "Escribe el script de solo lectura que reúne paquetes y configuración de un servidor Linux, para ejecutarlo a mano (MobaXterm, consola, Ansible) cuando no hay SSH directo desde aquí. Luego scan_host con collected_file analiza su salida.",
+    inputSchema: { output_path: z.string().optional().describe("Dónde escribir el script (por defecto ~/.xolotl/xolotl-collect.sh)") },
+  },
+  async ({ output_path }) => {
+    ensureDirs();
+    const file = path.resolve(output_path ?? path.join(HOME, "xolotl-collect.sh"));
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, COLLECTOR.replace(/\r\n/g, "\n"));
+    return text(
+      [
+        `Script escrito en ${file} (${COLLECTOR.split("\n").length} líneas, solo lectura: no instala ni cambia nada y no copia secretos).`,
+        "",
+        "En el servidor:",
+        "  1. Subir el archivo (SFTP de MobaXterm, scp) o pegarlo:  cat > ~/xolotl-collect.sh   (pegar, luego Ctrl+D)",
+        "  2. sudo sh ~/xolotl-collect.sh > ~/xolotl-$(hostname -s).txt",
+        "     (sin sudo también funciona, con menos comprobaciones)",
+        "  3. Descargar ~/xolotl-<host>.txt y pasarlo a scan_host con collected_file.",
+      ].join("\n"),
+    );
+  },
+);
+
+server.registerTool(
+  "scan_host",
+  {
+    title: "Escanear un servidor Linux",
+    description:
+      "Vulnerabilidades de los paquetes del sistema (Trivy con los avisos de la distribución: entiende los parches retroportados de RHEL/Debian) y endurecimiento (SSH, cuentas, sudo, firewall, SELinux/AppArmor, kernel, servicios expuestos, SUID, reinicio pendiente). Por SSH con llave (el host debe estar en dast_scope) o desde la salida de host_collector. Solo lectura.",
+    inputSchema: {
+      target: z.string().optional().describe("usuario@host para recolectar por SSH (solo llave o agente; nunca pide contraseña)"),
+      port: z.number().int().min(1).max(65535).optional(),
+      identity_file: z.string().optional().describe("Llave privada SSH a usar"),
+      sudo: z.boolean().optional().describe("Ejecutar el recolector con sudo -n (por defecto true; si sudo pide contraseña, falla en vez de preguntar)"),
+      collected_file: z.string().optional().describe("Salida de host_collector ejecutado a mano en el servidor"),
+      ignore_unfixed: z.boolean().optional().describe("Omitir vulnerabilidades sin parche publicado por la distribución"),
+      timeout_minutes: z.number().min(1).max(60).optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async (a, extra) => {
+    if (!!a.target === !!a.collected_file) return fail("Indica target (SSH) o collected_file, uno de los dos.");
+    const timeoutMs = minutes(a.timeout_minutes ?? 15);
+    let collected: string;
+    let via: string;
+    try {
+      if (a.target) {
+        const host = a.target.split("@").pop()!;
+        if (!matchScope(host)) {
+          return fail(`${host} no está en el alcance autorizado. Confirma con el usuario que puede revisarlo y regístralo con dast_scope action=add.`);
+        }
+        progress(extra as Extra, 0, 2, `recolectando en ${a.target}`);
+        collected = await collectViaSsh({ target: a.target, port: a.port, identityFile: a.identity_file, sudo: a.sudo ?? true, timeoutMs }, COLLECTOR);
+        via = `ssh ${a.target}`;
+      } else {
+        const file = path.resolve(a.collected_file!);
+        if (!fs.existsSync(file)) return fail(`No existe ${file}`);
+        collected = fs.readFileSync(file, "utf8");
+        via = file;
+      }
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+    const { meta, dir } = newRun("host", "servidor", { via });
+    try {
+      progress(extra as Extra, 1, 2, "analizando paquetes y configuración");
+      const { info, outcomes } = await scanHostText(dir, collected, !!a.ignore_unfixed, timeoutMs);
+      meta.target = `${info.hostname} (${info.osName})`;
+      return text(await finishRun(meta, outcomes, null));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
 server.registerTool(
   "dast_scope",
   {
-    title: "Alcance autorizado para DAST",
+    title: "Alcance autorizado (DAST y servidores)",
     description:
-      "Lista, agrega o quita objetivos autorizados para pruebas dinámicas. Agregar exige quién autorizó y la evidencia (contrato, ticket, ser dueño del sistema). Solo agrega objetivos que el usuario confirmó explícitamente que puede probar.",
+      "Lista, agrega o quita objetivos autorizados para pruebas contra sistemas en ejecución (scan_dast y scan_host por SSH). Agregar exige quién autorizó y la evidencia (contrato, ticket, ser dueño del sistema). Solo agrega objetivos que el usuario confirmó explícitamente que puede probar.",
     inputSchema: {
       action: z.enum(["list", "add", "remove"]),
       target: z.string().optional().describe("URL, host, host:puerto, *.dominio o CIDR IPv4 (/16 o más pequeño)"),
