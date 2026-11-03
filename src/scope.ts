@@ -65,6 +65,30 @@ function ipv4ToInt(ip: string): number {
   return ip.split(".").reduce((acc, o) => (acc << 8) + Number(o), 0) >>> 0;
 }
 
+const intToIpv4 = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join(".");
+
+/** Expande "host", "host:puerto" o un CIDR IPv4 (/22 o más pequeño) a direcciones concretas. */
+export function expandTargets(value: string, maxHosts = 1024): { hosts: string[]; port?: number } {
+  const v = value.trim();
+  const cidr = v.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
+  if (cidr) {
+    const bits = Number(cidr[2]);
+    if (!net.isIPv4(cidr[1]) || bits < 0 || bits > 32) throw new Error(`CIDR no válido: ${v}`);
+    const count = 2 ** (32 - bits);
+    if (count > maxHosts) throw new Error(`El rango ${v} tiene ${count} direcciones (máximo ${maxHosts}). Divídelo en bloques más pequeños.`);
+    const base = ipv4ToInt(cidr[1]) & (bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0);
+    // En /31 y /32 todas las direcciones son host; en el resto se omiten red y broadcast.
+    const skipEnds = bits <= 30 && count > 2;
+    const hosts: string[] = [];
+    for (let i = skipEnds ? 1 : 0; i < (skipEnds ? count - 1 : count); i++) hosts.push(intToIpv4(base + i));
+    return { hosts };
+  }
+  const m = v.match(/^([^:]+):(\d+)$/);
+  if (m && net.isIPv4(m[1])) return { hosts: [m[1]], port: Number(m[2]) };
+  if (m && !v.includes("::")) return { hosts: [m[1]], port: Number(m[2]) };
+  return { hosts: [v] };
+}
+
 function inCidr(ip: string, cidr: string): boolean {
   const [base, bitsStr] = cidr.split("/");
   const bits = Number(bitsStr);

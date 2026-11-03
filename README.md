@@ -6,7 +6,7 @@
 
 Servidor MCP + plugin de Claude Code que une siete escáneres de seguridad open source en una sola herramienta y pone a un agente de IA a hacer lo que los escáneres no hacen: leer el código, descartar falsos positivos con criterio, priorizar y verificar que cada arreglo funcione.
 
-`SAST` · `SCA` · `Secretos` · `Contenedores` · `IaC` · `Servidores` · `DAST` · `Triage con IA`
+`SAST` · `SCA` · `Secretos` · `Contenedores` · `IaC` · `Servidores` · `Red` · `DAST` · `Triage con IA`
 
 </div>
 
@@ -23,6 +23,7 @@ Servidor MCP + plugin de Claude Code que une siete escáneres de seguridad open 
 | **Secretos** | Tokens, claves y contraseñas, **también en todo el historial de git** | Gitleaks, Trivy | `scan_static` |
 | **Contenedores** | Paquetes vulnerables y secretos dentro de imágenes | Trivy | `scan_container_image` |
 | **IaC** | Dockerfile, compose, Kubernetes, Helm, Terraform, CloudFormation mal configurados | Trivy | `scan_iac`, `scan_static` |
+| **Red (sin credenciales)** | Puertos y servicios abiertos, postura TLS (protocolo/cifrado débil, certificado vencido/autofirmado/clave corta), servicios de riesgo expuestos (BD, Redis, Docker, Telnet/FTP, RDP/VNC, SMB, SNMP, IPMI, paneles), auditoría SSH | TCP/TLS nativo + ssh-audit + Nuclei | `scan_network` |
 | **Servidores Linux** | Paquetes del sistema con CVE (entendiendo los parches retroportados de RHEL/Debian) y endurecimiento: SSH, cuentas, sudo, firewall, SELinux/AppArmor, kernel, servicios expuestos, SUID, reinicio pendiente | Trivy + reglas propias | `scan_host`, `host_collector` |
 | **DAST** | Malas configuraciones, exposiciones y CVE en apps, APIs y servicios en ejecución | Nuclei | `scan_dast` |
 | **IA para AppSec** | Triage, explicación, priorización, parche y verificación | El agente (Claude u otro cliente MCP) | skills, prompts, `finding_triage`, `runs_diff` |
@@ -81,9 +82,10 @@ recolector (solo lectura)  →  paquetes + configuración  →  SBOM con distrib
 
 ### Hoja de ruta
 
+Hecho: `scan_network` (descubrimiento TCP + TLS nativo, ssh-audit). Lo que sigue:
+
 | Próximo | Motor previsto |
 |---|---|
-| Red sin credenciales (`scan_network`) | Nmap + Nuclei red/SSL + testssl.sh + ssh-audit, limitado al alcance |
 | Discos de VM sin encenderlas | `trivy vm` (VMDK, AMI, snapshots EBS) |
 | Nube: plano de control | Prowler con rol de solo lectura |
 | Benchmarks CIS/STIG formales | OpenSCAP (RHEL), Lynis |
@@ -135,6 +137,7 @@ Luego, en el chat:
 | `scan_iac` | Trivy config sobre infraestructura como código |
 | `scan_host` | Servidor Linux por SSH con llave (en el alcance autorizado) o desde la salida del recolector |
 | `host_collector` | Escribe el recolector de solo lectura para ejecutarlo en servidores sin SSH directo |
+| `scan_network` | Descubre puertos/servicios e inspecciona TLS sin credenciales (en el alcance autorizado) |
 | `dast_scope` | Alcance autorizado para DAST: quién autorizó y con qué evidencia |
 | `scan_dast` | Nuclei por perfiles (`baseline`, `automatic`, `full`, `custom`); rechaza objetivos fuera de alcance |
 | `runs_list` · `findings_query` · `finding_get` | Navegar corridas y hallazgos, con el código alrededor de la línea |

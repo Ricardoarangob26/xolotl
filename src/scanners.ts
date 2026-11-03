@@ -3,6 +3,7 @@ import path from "node:path";
 import { resolveTool, ResolvedTool, ToolId, toolVersion } from "./binaries.js";
 import { run, tail, which } from "./exec.js";
 import { buildSbom, checksToFindings, hardeningChecks, HostInfo, hostInfo, parseCollected, writeArtifacts } from "./host.js";
+import { HostResult, inventoryFinding, networkFindings, scanHostPorts } from "./network.js";
 import { RawFinding } from "./findings.js";
 import { parseBandit, parseGitleaks, parseNuclei, parseOsv, parseSarif, parseSemgrep, parseTrivy } from "./parsers.js";
 import { ToolRun } from "./store.js";
@@ -354,4 +355,80 @@ export async function scanHostText(dir: string, text: string, ignoreUnfixed: boo
     return { findings, message: `${info.packages} paquetes de ${info.osName}; ${fixable} de ${findings.length} con parche publicado` };
   });
   return { info, outcomes: [config, vulns] };
+}
+
+// ───────────── Red sin credenciales (TCP/TLS nativo + ssh-audit opcional) ─────────────
+export interface NetScanOpts {
+  hosts: string[];
+  ports: number[];
+  connectTimeoutMs: number;
+  concurrency: number;
+  sshAudit: boolean;
+  timeoutMs: number;
+}
+
+/** ssh-audit (vía uvx) contra los hosts con 22 abierto: algoritmos débiles y CVE del servidor SSH. */
+async function runSshAudit(targets: { host: string; port: number }[], timeoutMs: number): Promise<Outcome | null> {
+  if (!targets.length) return null;
+  const uvx = which("uvx");
+  if (!uvx) return { run: { tool: "ssh-audit", status: "skipped", message: "no disponible (instala uv para usarlo)" }, findings: [] };
+  const findings: RawFinding[] = [];
+  const started = Date.now();
+  for (const t of targets) {
+    const r = await run(uvx, ["ssh-audit", "-j", "-p", String(t.port), t.host], { timeoutMs: Math.min(timeoutMs, 60_000) });
+    const line = r.stdout.split(/\r?\n/).find((l) => l.trim().startsWith("{"));
+    if (!line) continue;
+    let data: any;
+    try {
+      data = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const sev = (lvl: string): RawFinding["severity"] => (lvl === "fail" ? "medium" : lvl === "warn" ? "low" : "info");
+    for (const [kind, recs] of Object.entries(data.recommendations ?? {})) {
+      for (const [action, byType] of Object.entries(recs as Record<string, any>)) {
+        for (const [algType, algs] of Object.entries(byType as Record<string, any>)) {
+          const list = Array.isArray(algs) ? algs.map((a: any) => (typeof a === "string" ? a : a.name)) : [];
+          if (list.length) findings.push({ tool: "ssh-audit", category: "network", severity: kind === "critical" ? "medium" : "low", ruleId: `XOL-SSH-ALGO-${action}`, title: `SSH en ${t.host}:${t.port}: ${action === "del" ? "quitar" : "cambiar"} ${algType} débiles`, description: `ssh-audit recomienda ${action === "del" ? "eliminar" : "revisar"} estos algoritmos de ${algType}: ${list.join(", ")}.`, remediation: "Ajustar Ciphers/MACs/KexAlgorithms/HostKeyAlgorithms en sshd_config a valores modernos.", location: { target: `${t.host}:${t.port}` } });
+        }
+      }
+    }
+    for (const c of data.cves ?? []) {
+      findings.push({ tool: "ssh-audit", category: "network", severity: c.cvssv2 >= 7 ? "high" : "medium", ruleId: c.name, title: `${c.name} en el servidor SSH de ${t.host}:${t.port}`, description: c.description ?? "Vulnerabilidad conocida en la versión de OpenSSH detectada.", cve: [c.name].filter((x) => x.startsWith("CVE-")), location: { target: `${t.host}:${t.port}` } });
+    }
+  }
+  return { run: { tool: "ssh-audit", status: "ok", durationMs: Date.now() - started, count: findings.length, message: `${targets.length} servidor(es) SSH` }, findings };
+}
+
+export async function scanNetwork(o: NetScanOpts, onProgress?: (done: number, total: number, msg: string) => void): Promise<{ outcomes: Outcome[]; hostsUp: number }> {
+  const started = Date.now();
+  const results: HostResult[] = [];
+  let done = 0;
+  await limited(
+    o.hosts.map((host) => async () => {
+      const hr = await scanHostPorts(host, { ports: o.ports, connectTimeoutMs: o.connectTimeoutMs, concurrency: o.concurrency });
+      results.push(hr);
+      onProgress?.(++done, o.hosts.length, `${host}: ${hr.ports.length} puerto(s)`);
+    }),
+    Math.min(16, o.hosts.length),
+  );
+
+  const netFindings: RawFinding[] = [];
+  for (const hr of results.filter((r) => r.up)) {
+    const inv = inventoryFinding(hr);
+    if (inv) netFindings.push(inv);
+    netFindings.push(...networkFindings(hr));
+  }
+  const scan: Outcome = {
+    run: { tool: "xolotl-net", status: "ok", durationMs: Date.now() - started, count: netFindings.length, message: `${results.filter((r) => r.up).length}/${o.hosts.length} host(s) con puertos abiertos, ${o.ports.length} puertos sondeados` },
+    findings: netFindings,
+  };
+
+  const outcomes = [scan];
+  if (o.sshAudit) {
+    const sshTargets = results.flatMap((r) => r.ports.filter((p) => p.service === "ssh").map((p) => ({ host: r.host, port: p.port })));
+    const audit = await runSshAudit(sshTargets, o.timeoutMs);
+    if (audit) outcomes.push(audit);
+  }
+  return { outcomes, hostsUp: results.filter((r) => r.up).length };
 }

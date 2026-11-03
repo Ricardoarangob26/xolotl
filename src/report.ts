@@ -10,6 +10,7 @@ const CAT_ES: Record<string, string> = {
   container: "Contenedores",
   host: "Paquetes del servidor",
   config: "Endurecimiento del servidor",
+  network: "Red y servicios expuestos",
   dast: "Pruebas dinámicas (DAST)",
 };
 const STATUS_ES: Record<string, string> = {

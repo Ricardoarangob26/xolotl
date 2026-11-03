@@ -36889,7 +36889,7 @@ import crypto from "node:crypto";
 import fs4 from "node:fs";
 import path4 from "node:path";
 var SEVERITIES = ["critical", "high", "medium", "low", "info"];
-var CATEGORIES = ["sast", "sca", "secret", "iac", "container", "host", "config", "dast"];
+var CATEGORIES = ["sast", "sca", "secret", "iac", "container", "host", "config", "network", "dast"];
 var TRIAGE_STATUSES = ["open", "confirmed", "false_positive", "accepted_risk", "fixed"];
 var sevRank = (s) => SEVERITIES.indexOf(s);
 function normSeverity(v) {
@@ -36961,6 +36961,7 @@ function fingerprintOf(f) {
     case "dast":
       return hash2([f.category, f.ruleId, loc.url ?? loc.target]);
     case "config":
+    case "network":
       return hash2([f.category, f.ruleId, loc.target]);
     default: {
       const code = f.snippet?.replace(/\s+/g, " ").trim();
@@ -37298,6 +37299,7 @@ var CAT_ES = {
   container: "Contenedores",
   host: "Paquetes del servidor",
   config: "Endurecimiento del servidor",
+  network: "Red y servicios expuestos",
   dast: "Pruebas din\xE1micas (DAST)"
 };
 var STATUS_ES = {
@@ -37734,6 +37736,328 @@ function writeArtifacts(dir, text2, sbom) {
   const file2 = path7.join(dir, "host.cdx.json");
   fs7.writeFileSync(file2, JSON.stringify(sbom));
   return file2;
+}
+
+// src/network.ts
+import net from "node:net";
+import tls from "node:tls";
+var COMMON_PORTS = {
+  21: "ftp",
+  22: "ssh",
+  23: "telnet",
+  25: "smtp",
+  53: "dns",
+  69: "tftp",
+  80: "http",
+  110: "pop3",
+  111: "rpcbind",
+  135: "msrpc",
+  137: "netbios",
+  139: "netbios-ssn",
+  143: "imap",
+  161: "snmp",
+  389: "ldap",
+  443: "https",
+  445: "smb",
+  465: "smtps",
+  512: "rexec",
+  513: "rlogin",
+  514: "rsh",
+  587: "smtp-sub",
+  623: "ipmi",
+  636: "ldaps",
+  993: "imaps",
+  995: "pop3s",
+  1080: "socks",
+  1433: "mssql",
+  1521: "oracle",
+  1883: "mqtt",
+  2049: "nfs",
+  2082: "cpanel",
+  2375: "docker",
+  2376: "docker-tls",
+  2379: "etcd",
+  3e3: "http-alt",
+  3128: "proxy",
+  3306: "mysql",
+  3389: "rdp",
+  4444: "metasploit",
+  5e3: "http-alt",
+  5432: "postgres",
+  5601: "kibana",
+  5672: "amqp",
+  5900: "vnc",
+  5985: "winrm",
+  5986: "winrm-tls",
+  6379: "redis",
+  6443: "kubernetes",
+  7001: "weblogic",
+  8e3: "http-alt",
+  8008: "http-alt",
+  8080: "http-proxy",
+  8081: "http-alt",
+  8443: "https-alt",
+  8888: "http-alt",
+  9e3: "http-alt",
+  9092: "kafka",
+  9200: "elasticsearch",
+  9300: "elasticsearch",
+  10250: "kubelet",
+  11211: "memcached",
+  15672: "rabbitmq-mgmt",
+  27017: "mongodb",
+  27018: "mongodb",
+  50070: "hadoop"
+};
+var TOP_PORTS = Object.keys(COMMON_PORTS).map(Number);
+var TLS_PORTS = /* @__PURE__ */ new Set([443, 465, 636, 993, 995, 2376, 5986, 6443, 8443, 9200, 9300, 15672]);
+var EXPOSED = {
+  telnet: { sev: "high", label: "Telnet", note: "env\xEDa credenciales y datos en claro" },
+  ftp: { sev: "medium", label: "FTP", note: "normalmente sin cifrado; usar SFTP" },
+  tftp: { sev: "high", label: "TFTP", note: "sin autenticaci\xF3n ni cifrado" },
+  rsh: { sev: "high", label: "rsh", note: "remoto sin cifrado" },
+  rlogin: { sev: "high", label: "rlogin", note: "remoto sin cifrado" },
+  rexec: { sev: "high", label: "rexec", note: "ejecuci\xF3n remota sin cifrado" },
+  mysql: { sev: "high", label: "MySQL/MariaDB", note: "base de datos expuesta a la red" },
+  postgres: { sev: "high", label: "PostgreSQL", note: "base de datos expuesta a la red" },
+  mssql: { sev: "high", label: "SQL Server", note: "base de datos expuesta a la red" },
+  oracle: { sev: "high", label: "Oracle DB", note: "base de datos expuesta a la red" },
+  mongodb: { sev: "critical", label: "MongoDB", note: "sin autenticaci\xF3n por defecto en versiones antiguas" },
+  redis: { sev: "critical", label: "Redis", note: "sin autenticaci\xF3n por defecto" },
+  memcached: { sev: "critical", label: "Memcached", note: "sin autenticaci\xF3n; usado para amplificaci\xF3n DDoS" },
+  elasticsearch: { sev: "high", label: "Elasticsearch", note: "sin autenticaci\xF3n por defecto en versiones antiguas" },
+  kibana: { sev: "high", label: "Kibana", note: "panel de datos sin autenticaci\xF3n por defecto" },
+  docker: { sev: "critical", label: "API de Docker sin TLS", note: "control total del host de contenedores" },
+  etcd: { sev: "critical", label: "etcd", note: "almac\xE9n de claves de Kubernetes" },
+  kubelet: { sev: "high", label: "Kubelet", note: "API de nodo de Kubernetes" },
+  kubernetes: { sev: "medium", label: "API de Kubernetes", note: "plano de control expuesto" },
+  vnc: { sev: "high", label: "VNC", note: "escritorio remoto, a menudo sin o con d\xE9bil autenticaci\xF3n" },
+  rdp: { sev: "medium", label: "RDP", note: "escritorio remoto; objetivo frecuente de fuerza bruta y CVE" },
+  winrm: { sev: "medium", label: "WinRM sin TLS", note: "administraci\xF3n remota de Windows en claro" },
+  smb: { sev: "medium", label: "SMB", note: "compartici\xF3n de archivos; objetivo de EternalBlue y ransomware" },
+  snmp: { sev: "medium", label: "SNMP", note: "a menudo con comunidad 'public' por defecto" },
+  ipmi: { sev: "high", label: "IPMI/BMC", note: "controladora de gesti\xF3n (iLO/iDRAC); CVE graves conocidos" },
+  rpcbind: { sev: "low", label: "rpcbind", note: "expone servicios RPC/NFS" },
+  nfs: { sev: "medium", label: "NFS", note: "compartici\xF3n de archivos por red" },
+  memcached_udp: { sev: "critical", label: "Memcached", note: "amplificaci\xF3n DDoS" },
+  ldap: { sev: "low", label: "LDAP sin cifrar", note: "directorio accesible; preferir LDAPS" },
+  amqp: { sev: "medium", label: "RabbitMQ/AMQP", note: "cola de mensajes expuesta" },
+  kafka: { sev: "medium", label: "Kafka", note: "bus de mensajes expuesto" },
+  hadoop: { sev: "high", label: "Hadoop", note: "interfaz sin autenticaci\xF3n por defecto" },
+  weblogic: { sev: "high", label: "WebLogic", note: "servidor con CVE cr\xEDticos frecuentes" }
+};
+function tcpProbe(host, port, timeoutMs) {
+  return new Promise((resolve) => {
+    const sock = new net.Socket();
+    let banner = "";
+    let done = false;
+    const finish = (open2) => {
+      if (done) return;
+      done = true;
+      sock.destroy();
+      resolve(open2 ? banner : null);
+    };
+    sock.setTimeout(timeoutMs);
+    sock.once("connect", () => {
+      if ([80, 8080, 8e3, 8008, 8081, 8888, 3e3, 5e3, 9e3, 3128].includes(port)) {
+        sock.write(`GET / HTTP/1.0\r
+Host: ${host}\r
+\r
+`);
+      }
+      setTimeout(() => finish(true), Math.min(600, timeoutMs));
+    });
+    sock.on("data", (d) => {
+      banner += d.toString("latin1");
+      if (banner.length > 512) finish(true);
+    });
+    sock.once("timeout", () => finish(false));
+    sock.once("error", () => finish(false));
+    sock.connect(port, host);
+  });
+}
+function inspectTls(host, port, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const sock = tls.connect(
+      { host, port, servername: net.isIP(host) ? void 0 : host, rejectUnauthorized: false, timeout: timeoutMs, ALPNProtocols: ["h2", "http/1.1"] },
+      () => {
+        if (done) return;
+        done = true;
+        const cert = sock.getPeerCertificate();
+        const cipher = sock.getCipher();
+        const now = Date.now();
+        const notAfter = cert?.valid_to ? new Date(cert.valid_to).getTime() : void 0;
+        const cn = (v) => Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : void 0;
+        const subjectCN = cn(cert?.subject?.CN);
+        const issuerCN = cn(cert?.issuer?.CN);
+        const info = {
+          protocol: sock.getProtocol() ?? void 0,
+          cipher: cipher?.name,
+          subject: subjectCN,
+          issuer: issuerCN,
+          selfSigned: !!cert && !!subjectCN && subjectCN === issuerCN,
+          notAfter: cert?.valid_to,
+          notBefore: cert?.valid_from,
+          daysLeft: notAfter ? Math.round((notAfter - now) / 864e5) : void 0,
+          san: cert?.subjectaltname?.split(",").map((s) => s.trim()),
+          keyBits: cert?.bits
+        };
+        sock.destroy();
+        resolve(info);
+      }
+    );
+    sock.setTimeout(timeoutMs);
+    const bail = (error62) => {
+      if (done) return;
+      done = true;
+      sock.destroy();
+      resolve(error62 ? { selfSigned: false, error: error62 } : null);
+    };
+    sock.once("timeout", () => bail());
+    sock.once("error", () => bail());
+  });
+}
+async function pool(items, worker, max) {
+  let i = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(max, items.length) }, async () => {
+      while (i < items.length) await worker(items[i++]);
+    })
+  );
+}
+async function scanHostPorts(host, o) {
+  const open2 = [];
+  await pool(
+    o.ports,
+    async (port) => {
+      const banner = await tcpProbe(host, port, o.connectTimeoutMs);
+      if (banner === null) return;
+      const pr = { port, service: COMMON_PORTS[port] ?? "desconocido", banner: banner.trim().slice(0, 200) || void 0 };
+      if (TLS_PORTS.has(port)) {
+        const t = await inspectTls(host, port, o.connectTimeoutMs * 2);
+        if (t && !t.error) pr.tls = t;
+      }
+      open2.push(pr);
+    },
+    o.concurrency
+  );
+  open2.sort((a, b) => a.port - b.port);
+  return { host, up: open2.length > 0, ports: open2 };
+}
+var WEAK_TLS_PROTO = /* @__PURE__ */ new Set(["TLSv1", "TLSv1.1", "SSLv3", "SSLv2"]);
+var WEAK_CIPHER = /(RC4|DES|3DES|NULL|EXPORT|MD5|anon)/i;
+function serviceFromBanner(pr) {
+  const b = pr.banner;
+  if (!b) return void 0;
+  const server2 = b.match(/^Server:\s*(.+)$/im)?.[1];
+  if (server2) return server2.trim();
+  const ssh = b.match(/^SSH-[\d.]+-(.+)$/im)?.[1];
+  if (ssh) return `SSH ${ssh.trim()}`;
+  const first = b.split(/\r?\n/)[0].trim();
+  return first && first.length < 80 ? first : void 0;
+}
+function networkFindings(hr) {
+  const out = [];
+  const emit = (port, rule, severity, title, description, remediation, evidence) => out.push({ tool: "xolotl-net", category: "network", severity, ruleId: rule, title, description, remediation, evidence, location: { target: `${hr.host}:${port}` } });
+  for (const pr of hr.ports) {
+    const exp = EXPOSED[pr.service];
+    const ver = serviceFromBanner(pr);
+    if (exp) {
+      emit(
+        pr.port,
+        `XOL-NET-EXP-${pr.port}`,
+        exp.sev,
+        `${exp.label} accesible por red en ${hr.host}:${pr.port}`,
+        `Puerto ${pr.port}/${pr.service} alcanzable: ${exp.note}. Un servicio que solo deber\xEDa usarse localmente o desde la red de administraci\xF3n est\xE1 expuesto m\xE1s all\xE1.`,
+        "Restringir con firewall a la red de administraci\xF3n, o hacer que el servicio escuche solo en la interfaz interna. Deshabilitarlo si no se usa.",
+        ver ? `banner: ${ver}` : void 0
+      );
+    }
+    const t = pr.tls;
+    if (t) {
+      if (t.protocol && WEAK_TLS_PROTO.has(t.protocol)) {
+        emit(
+          pr.port,
+          "XOL-TLS-PROTO",
+          "medium",
+          `TLS obsoleto (${t.protocol}) en ${hr.host}:${pr.port}`,
+          `El servicio negocia ${t.protocol}, con debilidades conocidas (POODLE, BEAST). Los navegadores y clientes modernos ya lo rechazan.`,
+          "Desactivar TLS 1.0/1.1 y SSLv3; permitir solo TLS 1.2 y 1.3.",
+          `protocolo: ${t.protocol}, cifrado: ${t.cipher ?? "?"}`
+        );
+      }
+      if (t.cipher && WEAK_CIPHER.test(t.cipher)) {
+        emit(
+          pr.port,
+          "XOL-TLS-CIPHER",
+          "medium",
+          `Cifrado TLS d\xE9bil en ${hr.host}:${pr.port}`,
+          `El servidor acept\xF3 el cifrado ${t.cipher}, considerado inseguro.`,
+          "Configurar una suite de cifrados moderna (sin RC4/3DES/DES/MD5/EXPORT).",
+          `cifrado: ${t.cipher}`
+        );
+      }
+      if (t.daysLeft !== void 0 && t.daysLeft < 0) {
+        emit(
+          pr.port,
+          "XOL-TLS-EXPIRED",
+          "high",
+          `Certificado TLS vencido en ${hr.host}:${pr.port}`,
+          `El certificado venci\xF3 hace ${-t.daysLeft} d\xEDa(s) (${t.notAfter}). Los clientes lo rechazan o los usuarios se acostumbran a ignorar la advertencia.`,
+          "Renovar el certificado y automatizar la renovaci\xF3n (ACME/Let's Encrypt o la PKI interna).",
+          `vence: ${t.notAfter}`
+        );
+      } else if (t.daysLeft !== void 0 && t.daysLeft < 21) {
+        emit(
+          pr.port,
+          "XOL-TLS-EXPIRING",
+          "low",
+          `Certificado TLS por vencer en ${hr.host}:${pr.port}`,
+          `El certificado vence en ${t.daysLeft} d\xEDa(s) (${t.notAfter}).`,
+          "Renovarlo antes del vencimiento; automatizar la renovaci\xF3n.",
+          `vence: ${t.notAfter}`
+        );
+      }
+      if (t.selfSigned) {
+        emit(
+          pr.port,
+          "XOL-TLS-SELFSIGNED",
+          "low",
+          `Certificado TLS autofirmado en ${hr.host}:${pr.port}`,
+          `El certificado lo emite el propio host (CN ${t.subject ?? "?"}): no lo valida ninguna autoridad, as\xED que no protege contra suplantaci\xF3n.`,
+          "Usar un certificado de una CA (p\xFAblica o interna de la instituci\xF3n). Aceptable solo en servicios internos con confianza expl\xEDcita.",
+          `emisor: ${t.issuer ?? "?"}`
+        );
+      }
+      if (t.keyBits && t.keyBits < 2048) {
+        emit(
+          pr.port,
+          "XOL-TLS-WEAKKEY",
+          "medium",
+          `Clave TLS corta (${t.keyBits} bits) en ${hr.host}:${pr.port}`,
+          `La clave del certificado es de ${t.keyBits} bits; por debajo de 2048 bits RSA se considera d\xE9bil.`,
+          "Reemisi\xF3n con clave RSA de 2048+ bits o ECDSA P-256.",
+          `bits: ${t.keyBits}`
+        );
+      }
+    }
+  }
+  return out;
+}
+function inventoryFinding(hr) {
+  if (!hr.ports.length) return null;
+  const lista = hr.ports.map((p) => `${p.port}/${p.service}${p.tls?.protocol ? ` (${p.tls.protocol})` : ""}${serviceFromBanner(p) ? ` \u2014 ${serviceFromBanner(p)}` : ""}`);
+  return {
+    tool: "xolotl-net",
+    category: "network",
+    severity: "info",
+    ruleId: "XOL-NET-INVENTORY",
+    title: `${hr.host}: ${hr.ports.length} puerto(s) abierto(s)`,
+    description: "Servicios alcanzables por red (inventario de superficie expuesta):\n" + lista.join("\n"),
+    location: { target: hr.host },
+    evidence: lista.join("\n")
+  };
 }
 
 // src/parsers.ts
@@ -38282,6 +38606,67 @@ async function scanHostText(dir, text2, ignoreUnfixed, timeoutMs) {
   });
   return { info, outcomes: [config2, vulns] };
 }
+async function runSshAudit(targets, timeoutMs) {
+  if (!targets.length) return null;
+  const uvx = which("uvx");
+  if (!uvx) return { run: { tool: "ssh-audit", status: "skipped", message: "no disponible (instala uv para usarlo)" }, findings: [] };
+  const findings = [];
+  const started = Date.now();
+  for (const t of targets) {
+    const r = await run(uvx, ["ssh-audit", "-j", "-p", String(t.port), t.host], { timeoutMs: Math.min(timeoutMs, 6e4) });
+    const line = r.stdout.split(/\r?\n/).find((l) => l.trim().startsWith("{"));
+    if (!line) continue;
+    let data;
+    try {
+      data = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const sev = (lvl) => lvl === "fail" ? "medium" : lvl === "warn" ? "low" : "info";
+    for (const [kind, recs] of Object.entries(data.recommendations ?? {})) {
+      for (const [action, byType] of Object.entries(recs)) {
+        for (const [algType, algs] of Object.entries(byType)) {
+          const list = Array.isArray(algs) ? algs.map((a) => typeof a === "string" ? a : a.name) : [];
+          if (list.length) findings.push({ tool: "ssh-audit", category: "network", severity: kind === "critical" ? "medium" : "low", ruleId: `XOL-SSH-ALGO-${action}`, title: `SSH en ${t.host}:${t.port}: ${action === "del" ? "quitar" : "cambiar"} ${algType} d\xE9biles`, description: `ssh-audit recomienda ${action === "del" ? "eliminar" : "revisar"} estos algoritmos de ${algType}: ${list.join(", ")}.`, remediation: "Ajustar Ciphers/MACs/KexAlgorithms/HostKeyAlgorithms en sshd_config a valores modernos.", location: { target: `${t.host}:${t.port}` } });
+        }
+      }
+    }
+    for (const c of data.cves ?? []) {
+      findings.push({ tool: "ssh-audit", category: "network", severity: c.cvssv2 >= 7 ? "high" : "medium", ruleId: c.name, title: `${c.name} en el servidor SSH de ${t.host}:${t.port}`, description: c.description ?? "Vulnerabilidad conocida en la versi\xF3n de OpenSSH detectada.", cve: [c.name].filter((x) => x.startsWith("CVE-")), location: { target: `${t.host}:${t.port}` } });
+    }
+  }
+  return { run: { tool: "ssh-audit", status: "ok", durationMs: Date.now() - started, count: findings.length, message: `${targets.length} servidor(es) SSH` }, findings };
+}
+async function scanNetwork(o, onProgress) {
+  const started = Date.now();
+  const results = [];
+  let done = 0;
+  await limited(
+    o.hosts.map((host) => async () => {
+      const hr = await scanHostPorts(host, { ports: o.ports, connectTimeoutMs: o.connectTimeoutMs, concurrency: o.concurrency });
+      results.push(hr);
+      onProgress?.(++done, o.hosts.length, `${host}: ${hr.ports.length} puerto(s)`);
+    }),
+    Math.min(16, o.hosts.length)
+  );
+  const netFindings = [];
+  for (const hr of results.filter((r) => r.up)) {
+    const inv = inventoryFinding(hr);
+    if (inv) netFindings.push(inv);
+    netFindings.push(...networkFindings(hr));
+  }
+  const scan = {
+    run: { tool: "xolotl-net", status: "ok", durationMs: Date.now() - started, count: netFindings.length, message: `${results.filter((r) => r.up).length}/${o.hosts.length} host(s) con puertos abiertos, ${o.ports.length} puertos sondeados` },
+    findings: netFindings
+  };
+  const outcomes = [scan];
+  if (o.sshAudit) {
+    const sshTargets = results.flatMap((r) => r.ports.filter((p) => p.service === "ssh").map((p) => ({ host: r.host, port: p.port })));
+    const audit = await runSshAudit(sshTargets, o.timeoutMs);
+    if (audit) outcomes.push(audit);
+  }
+  return { outcomes, hostsUp: results.filter((r) => r.up).length };
+}
 
 // src/collector.sh
 var collector_default = `#!/bin/sh
@@ -38417,7 +38802,7 @@ echo ok
 
 // src/scope.ts
 import fs9 from "node:fs";
-import net from "node:net";
+import net2 from "node:net";
 var BUILTIN = ["localhost", "127.0.0.1", "::1"].map((value) => ({
   value,
   authorized_by: "predeterminado",
@@ -38462,10 +38847,30 @@ function removeScope(value) {
 function ipv4ToInt(ip) {
   return ip.split(".").reduce((acc, o) => (acc << 8) + Number(o), 0) >>> 0;
 }
+var intToIpv4 = (n) => [n >>> 24 & 255, n >>> 16 & 255, n >>> 8 & 255, n & 255].join(".");
+function expandTargets(value, maxHosts = 1024) {
+  const v = value.trim();
+  const cidr = v.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
+  if (cidr) {
+    const bits = Number(cidr[2]);
+    if (!net2.isIPv4(cidr[1]) || bits < 0 || bits > 32) throw new Error(`CIDR no v\xE1lido: ${v}`);
+    const count = 2 ** (32 - bits);
+    if (count > maxHosts) throw new Error(`El rango ${v} tiene ${count} direcciones (m\xE1ximo ${maxHosts}). Div\xEDdelo en bloques m\xE1s peque\xF1os.`);
+    const base = ipv4ToInt(cidr[1]) & (bits === 0 ? 0 : ~0 << 32 - bits >>> 0);
+    const skipEnds = bits <= 30 && count > 2;
+    const hosts = [];
+    for (let i = skipEnds ? 1 : 0; i < (skipEnds ? count - 1 : count); i++) hosts.push(intToIpv4(base + i));
+    return { hosts };
+  }
+  const m = v.match(/^([^:]+):(\d+)$/);
+  if (m && net2.isIPv4(m[1])) return { hosts: [m[1]], port: Number(m[2]) };
+  if (m && !v.includes("::")) return { hosts: [m[1]], port: Number(m[2]) };
+  return { hosts: [v] };
+}
 function inCidr(ip, cidr) {
   const [base, bitsStr] = cidr.split("/");
   const bits = Number(bitsStr);
-  if (!net.isIPv4(ip) || !net.isIPv4(base)) return false;
+  if (!net2.isIPv4(ip) || !net2.isIPv4(base)) return false;
   const mask = bits === 0 ? 0 : ~0 << 32 - bits >>> 0;
   return (ipv4ToInt(ip) & mask) === (ipv4ToInt(base) & mask);
 }
@@ -38703,6 +39108,48 @@ server.registerTool(
     const { meta: meta3, dir } = newRun("iac", root);
     const o = await scanTrivyFs({ root, dir, excludes: DEFAULT_EXCLUDES, timeoutMs: minutes(args.timeout_minutes ?? 15) }, [], "config");
     return text(await finishRun(meta3, [o], root));
+  }
+);
+server.registerTool(
+  "scan_network",
+  {
+    title: "Reconocimiento de red (sin credenciales)",
+    description: "Descubre puertos y servicios abiertos, revisa la postura TLS (protocolo obsoleto, cifrado d\xE9bil, certificado vencido/autofirmado/clave corta) y marca servicios de riesgo expuestos a la red (bases de datos, Redis, Docker, Telnet/FTP, RDP/VNC, SMB, SNMP, IPMI, paneles sin autenticaci\xF3n). Escaneo TCP e inspecci\xF3n TLS nativos (no requiere nmap); ssh-audit (si hay uv) audita los servidores SSH. Solo contra objetivos dentro de dast_scope. No usa credenciales.",
+    inputSchema: {
+      targets: external_exports.array(external_exports.string()).min(1).max(64).describe("Hosts, host:puerto o CIDR IPv4 (/22 o menor). Cada host debe estar en el alcance autorizado"),
+      ports: external_exports.union([external_exports.literal("top"), external_exports.literal("full"), external_exports.array(external_exports.number().int().min(1).max(65535))]).optional().describe("'top' (~90 comunes, por defecto), 'full' (1-65535, lento) o una lista"),
+      ssh_audit: external_exports.boolean().optional().describe("Auditar con ssh-audit los hosts con SSH abierto (por defecto true)"),
+      connect_timeout_ms: external_exports.number().min(100).max(1e4).optional().describe("Tiempo de espera por puerto (por defecto 1200)"),
+      concurrency: external_exports.number().min(1).max(512).optional().describe("Puertos en paralelo por host (por defecto 120)"),
+      timeout_minutes: external_exports.number().min(1).max(120).optional()
+    },
+    annotations: { openWorldHint: true, readOnlyHint: true }
+  },
+  async (a, extra) => {
+    let hosts = [];
+    try {
+      const custom2 = [];
+      for (const t of a.targets) {
+        const { hosts: hs, port } = expandTargets(t);
+        for (const h of hs) {
+          if (!matchScope(h)) return fail(`${h} (de ${t}) no est\xE1 en el alcance autorizado. Reg\xEDstralo con dast_scope action=add (authorized_by + evidence) tras confirmar que puedes probarlo.`);
+          hosts.push(h);
+          if (port) custom2.push(port);
+        }
+      }
+      hosts = [...new Set(hosts)];
+      const ports = a.ports === "full" ? Array.from({ length: 65535 }, (_, i) => i + 1) : Array.isArray(a.ports) ? a.ports : [.../* @__PURE__ */ new Set([...TOP_PORTS, ...custom2])];
+      const { meta: meta3, dir } = newRun("network", a.targets.join(" "), { hosts: hosts.length, ports: ports.length, scope: a.targets.map((t) => t) });
+      progress(extra, 0, hosts.length, `sondeando ${hosts.length} host(s) \xD7 ${ports.length} puertos`);
+      const { outcomes } = await scanNetwork(
+        { hosts, ports, connectTimeoutMs: a.connect_timeout_ms ?? 1200, concurrency: a.concurrency ?? 120, sshAudit: a.ssh_audit ?? true, timeoutMs: minutes(a.timeout_minutes ?? 30) },
+        (done, total, msg) => progress(extra, done, total, msg)
+      );
+      void dir;
+      return text(await finishRun(meta3, outcomes, null));
+    } catch (e) {
+      return fail(e.message);
+    }
   }
 );
 server.registerTool(

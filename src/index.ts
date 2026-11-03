@@ -22,9 +22,11 @@ import {
   scanTrivyImage,
   collectViaSsh,
   scanHostText,
+  scanNetwork,
 } from "./scanners.js";
+import { TOP_PORTS } from "./network.js";
 import COLLECTOR from "./collector.sh";
-import { addScope, builtinScope, loadScope, matchScope, removeScope } from "./scope.js";
+import { addScope, builtinScope, expandTargets, loadScope, matchScope, removeScope } from "./scope.js";
 import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage } from "./store.js";
 
 const server = new McpServer(
@@ -266,6 +268,52 @@ server.registerTool(
     const { meta, dir } = newRun("iac", root);
     const o = await scanTrivyFs({ root, dir, excludes: DEFAULT_EXCLUDES, timeoutMs: minutes(args.timeout_minutes ?? 15) }, [], "config");
     return text(await finishRun(meta, [o], root));
+  },
+);
+
+// ═════════════ Red (sin credenciales) ═════════════
+
+server.registerTool(
+  "scan_network",
+  {
+    title: "Reconocimiento de red (sin credenciales)",
+    description:
+      "Descubre puertos y servicios abiertos, revisa la postura TLS (protocolo obsoleto, cifrado débil, certificado vencido/autofirmado/clave corta) y marca servicios de riesgo expuestos a la red (bases de datos, Redis, Docker, Telnet/FTP, RDP/VNC, SMB, SNMP, IPMI, paneles sin autenticación). Escaneo TCP e inspección TLS nativos (no requiere nmap); ssh-audit (si hay uv) audita los servidores SSH. Solo contra objetivos dentro de dast_scope. No usa credenciales.",
+    inputSchema: {
+      targets: z.array(z.string()).min(1).max(64).describe("Hosts, host:puerto o CIDR IPv4 (/22 o menor). Cada host debe estar en el alcance autorizado"),
+      ports: z.union([z.literal("top"), z.literal("full"), z.array(z.number().int().min(1).max(65535))]).optional().describe("'top' (~90 comunes, por defecto), 'full' (1-65535, lento) o una lista"),
+      ssh_audit: z.boolean().optional().describe("Auditar con ssh-audit los hosts con SSH abierto (por defecto true)"),
+      connect_timeout_ms: z.number().min(100).max(10000).optional().describe("Tiempo de espera por puerto (por defecto 1200)"),
+      concurrency: z.number().min(1).max(512).optional().describe("Puertos en paralelo por host (por defecto 120)"),
+      timeout_minutes: z.number().min(1).max(120).optional(),
+    },
+    annotations: { openWorldHint: true, readOnlyHint: true },
+  },
+  async (a, extra) => {
+    let hosts: string[] = [];
+    try {
+      const custom: number[] = [];
+      for (const t of a.targets) {
+        const { hosts: hs, port } = expandTargets(t);
+        for (const h of hs) {
+          if (!matchScope(h)) return fail(`${h} (de ${t}) no está en el alcance autorizado. Regístralo con dast_scope action=add (authorized_by + evidence) tras confirmar que puedes probarlo.`);
+          hosts.push(h);
+          if (port) custom.push(port);
+        }
+      }
+      hosts = [...new Set(hosts)];
+      const ports = a.ports === "full" ? Array.from({ length: 65535 }, (_, i) => i + 1) : Array.isArray(a.ports) ? a.ports : [...new Set([...TOP_PORTS, ...custom])];
+      const { meta, dir } = newRun("network", a.targets.join(" "), { hosts: hosts.length, ports: ports.length, scope: a.targets.map((t) => t) });
+      progress(extra as Extra, 0, hosts.length, `sondeando ${hosts.length} host(s) × ${ports.length} puertos`);
+      const { outcomes } = await scanNetwork(
+        { hosts, ports, connectTimeoutMs: a.connect_timeout_ms ?? 1200, concurrency: a.concurrency ?? 120, sshAudit: a.ssh_audit ?? true, timeoutMs: minutes(a.timeout_minutes ?? 30) },
+        (done, total, msg) => progress(extra as Extra, done, total, msg),
+      );
+      void dir;
+      return text(await finishRun(meta, outcomes, null));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
   },
 );
 

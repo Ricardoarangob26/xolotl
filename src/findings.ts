@@ -5,7 +5,7 @@ import path from "node:path";
 export const SEVERITIES = ["critical", "high", "medium", "low", "info"] as const;
 export type Severity = (typeof SEVERITIES)[number];
 
-export const CATEGORIES = ["sast", "sca", "secret", "iac", "container", "host", "config", "dast"] as const;
+export const CATEGORIES = ["sast", "sca", "secret", "iac", "container", "host", "config", "network", "dast"] as const;
 export type Category = (typeof CATEGORIES)[number];
 
 export const TRIAGE_STATUSES = ["open", "confirmed", "false_positive", "accepted_risk", "fixed"] as const;
@@ -131,6 +131,7 @@ function fingerprintOf(f: Finding): string {
     case "dast":
       return hash([f.category, f.ruleId, loc.url ?? loc.target]);
     case "config":
+    case "network":
       return hash([f.category, f.ruleId, loc.target]);
     default: {
       const code = f.snippet?.replace(/\s+/g, " ").trim();
