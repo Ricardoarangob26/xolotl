@@ -374,16 +374,24 @@ async function runSshAudit(targets: { host: string; port: number }[], timeoutMs:
   if (!uvx) return { run: { tool: "ssh-audit", status: "skipped", message: "no disponible (instala uv para usarlo)" }, findings: [] };
   const findings: RawFinding[] = [];
   const started = Date.now();
+  let audited = 0;
+  const failed: string[] = [];
   for (const t of targets) {
     const r = await run(uvx, ["ssh-audit", "-j", "-p", String(t.port), t.host], { timeoutMs: Math.min(timeoutMs, 60_000) });
     const line = r.stdout.split(/\r?\n/).find((l) => l.trim().startsWith("{"));
-    if (!line) continue;
     let data: any;
     try {
-      data = JSON.parse(line);
+      data = line ? JSON.parse(line) : null;
     } catch {
+      data = null;
+    }
+    // Sin JSON = ssh-audit no pudo completar (sin banner, bloqueado, caído). NO es "limpio".
+    if (!data || !data.banner) {
+      const why = /not allowed|refused|banner|timed out|timeout/i.exec(`${r.stdout} ${r.stderr}`)?.[0] ?? `código ${r.code}`;
+      failed.push(`${t.host}:${t.port} (${why})`);
       continue;
     }
+    audited++;
     const sev = (lvl: string): RawFinding["severity"] => (lvl === "fail" ? "medium" : lvl === "warn" ? "low" : "info");
     for (const [kind, recs] of Object.entries(data.recommendations ?? {})) {
       for (const [action, byType] of Object.entries(recs as Record<string, any>)) {
@@ -397,7 +405,10 @@ async function runSshAudit(targets: { host: string; port: number }[], timeoutMs:
       findings.push({ tool: "ssh-audit", category: "network", severity: c.cvssv2 >= 7 ? "high" : "medium", ruleId: c.name, title: `${c.name} en el servidor SSH de ${t.host}:${t.port}`, description: c.description ?? "Vulnerabilidad conocida en la versión de OpenSSH detectada.", cve: [c.name].filter((x) => x.startsWith("CVE-")), location: { target: `${t.host}:${t.port}` } });
     }
   }
-  return { run: { tool: "ssh-audit", status: "ok", durationMs: Date.now() - started, count: findings.length, message: `${targets.length} servidor(es) SSH` }, findings };
+  const status = audited === 0 && failed.length ? "error" : "ok";
+  const parts = [`${audited}/${targets.length} servidor(es) SSH auditados`];
+  if (failed.length) parts.push(`sin auditar: ${failed.join(", ")}`);
+  return { run: { tool: "ssh-audit", status, durationMs: Date.now() - started, count: findings.length, message: parts.join(" · ") }, findings };
 }
 
 export async function scanNetwork(o: NetScanOpts, onProgress?: (done: number, total: number, msg: string) => void): Promise<{ outcomes: Outcome[]; hostsUp: number }> {

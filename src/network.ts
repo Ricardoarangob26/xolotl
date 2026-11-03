@@ -85,6 +85,8 @@ export interface TlsInfo {
   daysLeft?: number;
   san?: string[];
   keyBits?: number;
+  keyType?: "rsa" | "ec" | "otro";
+  keyCurve?: string;
   error?: string;
 }
 
@@ -149,6 +151,9 @@ function inspectTls(host: string, port: number, timeoutMs: number): Promise<TlsI
           daysLeft: notAfter ? Math.round((notAfter - now) / 86400000) : undefined,
           san: cert?.subjectaltname?.split(",").map((s) => s.trim()),
           keyBits: (cert as { bits?: number })?.bits,
+          // Las claves EC (P-256/384) tienen pocos bits pero son fuertes; solo RSA se mide por 2048.
+          keyCurve: (cert as { nistCurve?: string; asn1Curve?: string })?.nistCurve ?? (cert as { asn1Curve?: string })?.asn1Curve,
+          keyType: (cert as { nistCurve?: string; asn1Curve?: string })?.nistCurve || (cert as { asn1Curve?: string })?.asn1Curve ? "ec" : (cert as { bits?: number })?.bits ? "rsa" : "otro",
         };
         sock.destroy();
         resolve(info);
@@ -258,10 +263,12 @@ export function networkFindings(hr: HostResult): RawFinding[] {
           `El certificado lo emite el propio host (CN ${t.subject ?? "?"}): no lo valida ninguna autoridad, así que no protege contra suplantación.`,
           "Usar un certificado de una CA (pública o interna de la institución). Aceptable solo en servicios internos con confianza explícita.", `emisor: ${t.issuer ?? "?"}`);
       }
-      if (t.keyBits && t.keyBits < 2048) {
-        emit(pr.port, "XOL-TLS-WEAKKEY", "medium", `Clave TLS corta (${t.keyBits} bits) en ${hr.host}:${pr.port}`,
-          `La clave del certificado es de ${t.keyBits} bits; por debajo de 2048 bits RSA se considera débil.`,
-          "Reemisión con clave RSA de 2048+ bits o ECDSA P-256.", `bits: ${t.keyBits}`);
+      // Solo RSA se mide por 2048 bits; una clave EC (P-256 = 256 bits) es fuerte, no débil.
+      const weakKey = (t.keyType === "rsa" && t.keyBits && t.keyBits < 2048) || (t.keyType === "ec" && t.keyBits && t.keyBits < 224);
+      if (weakKey) {
+        emit(pr.port, "XOL-TLS-WEAKKEY", "medium", `Clave TLS corta (${t.keyType?.toUpperCase()} ${t.keyBits} bits) en ${hr.host}:${pr.port}`,
+          `La clave del certificado es ${t.keyType === "rsa" ? `RSA de ${t.keyBits} bits (por debajo de 2048 se considera débil)` : `EC de ${t.keyBits} bits (curva ${t.keyCurve ?? "?"}, por debajo de P-224)`}.`,
+          "Reemisión con clave RSA de 2048+ bits o ECDSA P-256/P-384.", `${t.keyType} ${t.keyBits} bits${t.keyCurve ? ` (${t.keyCurve})` : ""}`);
       }
     }
   }

@@ -37901,7 +37901,10 @@ function inspectTls(host, port, timeoutMs) {
           notBefore: cert?.valid_from,
           daysLeft: notAfter ? Math.round((notAfter - now) / 864e5) : void 0,
           san: cert?.subjectaltname?.split(",").map((s) => s.trim()),
-          keyBits: cert?.bits
+          keyBits: cert?.bits,
+          // Las claves EC (P-256/384) tienen pocos bits pero son fuertes; solo RSA se mide por 2048.
+          keyCurve: cert?.nistCurve ?? cert?.asn1Curve,
+          keyType: cert?.nistCurve || cert?.asn1Curve ? "ec" : cert?.bits ? "rsa" : "otro"
         };
         sock.destroy();
         resolve(info);
@@ -38030,15 +38033,16 @@ function networkFindings(hr) {
           `emisor: ${t.issuer ?? "?"}`
         );
       }
-      if (t.keyBits && t.keyBits < 2048) {
+      const weakKey = t.keyType === "rsa" && t.keyBits && t.keyBits < 2048 || t.keyType === "ec" && t.keyBits && t.keyBits < 224;
+      if (weakKey) {
         emit(
           pr.port,
           "XOL-TLS-WEAKKEY",
           "medium",
-          `Clave TLS corta (${t.keyBits} bits) en ${hr.host}:${pr.port}`,
-          `La clave del certificado es de ${t.keyBits} bits; por debajo de 2048 bits RSA se considera d\xE9bil.`,
-          "Reemisi\xF3n con clave RSA de 2048+ bits o ECDSA P-256.",
-          `bits: ${t.keyBits}`
+          `Clave TLS corta (${t.keyType?.toUpperCase()} ${t.keyBits} bits) en ${hr.host}:${pr.port}`,
+          `La clave del certificado es ${t.keyType === "rsa" ? `RSA de ${t.keyBits} bits (por debajo de 2048 se considera d\xE9bil)` : `EC de ${t.keyBits} bits (curva ${t.keyCurve ?? "?"}, por debajo de P-224)`}.`,
+          "Reemisi\xF3n con clave RSA de 2048+ bits o ECDSA P-256/P-384.",
+          `${t.keyType} ${t.keyBits} bits${t.keyCurve ? ` (${t.keyCurve})` : ""}`
         );
       }
     }
@@ -38612,16 +38616,23 @@ async function runSshAudit(targets, timeoutMs) {
   if (!uvx) return { run: { tool: "ssh-audit", status: "skipped", message: "no disponible (instala uv para usarlo)" }, findings: [] };
   const findings = [];
   const started = Date.now();
+  let audited = 0;
+  const failed = [];
   for (const t of targets) {
     const r = await run(uvx, ["ssh-audit", "-j", "-p", String(t.port), t.host], { timeoutMs: Math.min(timeoutMs, 6e4) });
     const line = r.stdout.split(/\r?\n/).find((l) => l.trim().startsWith("{"));
-    if (!line) continue;
     let data;
     try {
-      data = JSON.parse(line);
+      data = line ? JSON.parse(line) : null;
     } catch {
+      data = null;
+    }
+    if (!data || !data.banner) {
+      const why = /not allowed|refused|banner|timed out|timeout/i.exec(`${r.stdout} ${r.stderr}`)?.[0] ?? `c\xF3digo ${r.code}`;
+      failed.push(`${t.host}:${t.port} (${why})`);
       continue;
     }
+    audited++;
     const sev = (lvl) => lvl === "fail" ? "medium" : lvl === "warn" ? "low" : "info";
     for (const [kind, recs] of Object.entries(data.recommendations ?? {})) {
       for (const [action, byType] of Object.entries(recs)) {
@@ -38635,7 +38646,10 @@ async function runSshAudit(targets, timeoutMs) {
       findings.push({ tool: "ssh-audit", category: "network", severity: c.cvssv2 >= 7 ? "high" : "medium", ruleId: c.name, title: `${c.name} en el servidor SSH de ${t.host}:${t.port}`, description: c.description ?? "Vulnerabilidad conocida en la versi\xF3n de OpenSSH detectada.", cve: [c.name].filter((x) => x.startsWith("CVE-")), location: { target: `${t.host}:${t.port}` } });
     }
   }
-  return { run: { tool: "ssh-audit", status: "ok", durationMs: Date.now() - started, count: findings.length, message: `${targets.length} servidor(es) SSH` }, findings };
+  const status = audited === 0 && failed.length ? "error" : "ok";
+  const parts = [`${audited}/${targets.length} servidor(es) SSH auditados`];
+  if (failed.length) parts.push(`sin auditar: ${failed.join(", ")}`);
+  return { run: { tool: "ssh-audit", status, durationMs: Date.now() - started, count: findings.length, message: parts.join(" \xB7 ") }, findings };
 }
 async function scanNetwork(o, onProgress) {
   const started = Date.now();
