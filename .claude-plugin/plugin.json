@@ -1,0 +1,16 @@
+{
+  "name": "xolotl",
+  "version": "0.1.0",
+  "description": "Pruebas de seguridad de aplicativos: SAST (Semgrep, Bandit, CodeQL), SCA (OSV-Scanner, Trivy), secretos (Gitleaks, Trivy), contenedores e IaC (Trivy) y DAST (Nuclei) unificados en un MCP, con skills de auditoría, triage, DAST autorizado y remediación verificada.",
+  "author": {
+    "name": "Ricardo Andres Arango Buelvas"
+  },
+  "license": "MIT",
+  "keywords": ["security", "appsec", "xolotl", "sast", "sca", "dast", "semgrep", "trivy", "nuclei"],
+  "mcpServers": {
+    "xolotl": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/index.js"]
+    }
+  }
+}

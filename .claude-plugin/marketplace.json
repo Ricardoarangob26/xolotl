@@ -1,0 +1,14 @@
+{
+  "name": "xolotl",
+  "description": "Herramientas de seguridad de aplicativos para Claude Code.",
+  "owner": {
+    "name": "Ricardo Andres Arango Buelvas"
+  },
+  "plugins": [
+    {
+      "name": "xolotl",
+      "source": "./",
+      "description": "MCP + skills de pruebas de seguridad de aplicativos (Semgrep, CodeQL, Bandit, OSV-Scanner, Trivy, Gitleaks, Nuclei)."
+    }
+  ]
+}

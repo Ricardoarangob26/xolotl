@@ -1,0 +1,28 @@
+{
+  "name": "xolotl-mcp",
+  "version": "0.1.0",
+  "description": "Servidor MCP que unifica Semgrep, CodeQL, Bandit, OSV-Scanner, Trivy, Gitleaks y Nuclei en una sola herramienta de pruebas de seguridad.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "xolotl": "dist/index.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "selftest": "node scripts/selftest.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3"
+  }
+}
