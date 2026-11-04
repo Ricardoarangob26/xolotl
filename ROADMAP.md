@@ -31,8 +31,8 @@ tomar su estética y su modelo, no su dependencia de la nube.
 |---|---|---|---|
 | **BD local SQLite** | ✅ | Hallazgos, corridas y enlaces en `~/.xolotl/xolotl.db` con huella estable, columna `tool_used` e índices. Motor `node:sqlite` nativo (Node 22.5+) con respaldo JSON. | Su `findings.sh` + esquema |
 | **Inventario / ecosistema** | ✅ | Tool `inventory`: resumen del ecosistema, activos, hallazgos en el tiempo (nuevos/persistentes/desaparecidos) e historia por huella. Crece solo con cada corrida. | Tu petición original |
+| **Niveles de ejecución (Tier 1 / Tier 2)** | ✅ | Parámetro `mode` en `scan_network`/`scan_dast`/`scan_host` y variable `XOLOTL_MODE`. *advisory* (Tier 1): no se conecta, entrega el comando exacto para correr a mano (tu flujo de MobaXterm). *execute* (Tier 2): escanea validando el alcance. | Su modelo de dos niveles |
 | **Catálogo de skills por dominio** | 🧭 | Las skills ordenadas por nivel de acceso al objetivo, navegables en markdown. Base en [`docs/catalogo/`](docs/catalogo/README.md). | Su catálogo de agentes `.md` |
-| **Niveles de ejecución (Tier 1 / Tier 2)** | 🧭 | *Advisory* (el agente aconseja y tú corres el comando — tu flujo de MobaXterm) vs *Execution* (el agente compone el comando, lo valida contra el alcance y lo muestra para aprobación). | Su modelo de dos niveles |
 
 ## Fase 2 — Más superficie de sistema
 

@@ -12,10 +12,15 @@ que importa en la práctica: no es lo mismo lo que ves desde fuera que lo que ve
 
 ## Niveles de ejecución
 
-Cada capacidad corre en uno de dos modos, al estilo de un compromiso de pentest:
+Cada capacidad que toca un sistema vivo corre en uno de dos modos, al estilo de un
+compromiso de pentest. Se elige con el parámetro `mode` de la herramienta o con la variable
+`XOLOTL_MODE` (modo por defecto del servidor); `xolotl_doctor` muestra cuál está activo.
 
-- **Tier 1 · Advisory** — el agente recomienda y *tú* corres el comando (tu flujo de MobaXterm: Ricardo ejecuta y pega la salida). Cero riesgo de que la herramienta toque algo por su cuenta.
-- **Tier 2 · Execution** — el agente compone el comando, lo valida contra el alcance autorizado y lo muestra para tu aprobación antes de ejecutarlo.
+- **Tier 1 · `advisory`** — el servidor **no se conecta** al objetivo: entrega el comando exacto para que lo corras tú (tu flujo de MobaXterm: Ricardo ejecuta y pega la salida) y te dice cómo traer el resultado. Para redes aisladas, cumplimiento, o un host que ya nos bloqueó.
+- **Tier 2 · `execute`** — el servidor valida el objetivo contra el alcance autorizado y ejecuta el escaneo. El cliente MCP pide tu aprobación antes de correr la herramienta.
+
+Aplica a `scan_network`, `scan_dast` y `scan_host` (por SSH). El análisis de código fuente
+corre siempre en local, así que no distingue niveles.
 
 ## Leyenda de estado
 

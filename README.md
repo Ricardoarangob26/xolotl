@@ -153,6 +153,7 @@ Luego, en el chat:
 
 ## Modelo de seguridad de la propia herramienta
 
+- **Niveles de ejecución.** Las pruebas contra sistemas vivos (`scan_network`, `scan_dast`, `scan_host` por SSH) tienen dos modos: `execute` (Tier 2, escanea validando el alcance) y `advisory` (Tier 1, **no se conecta**: entrega el comando exacto para correrlo a mano y traer el resultado). Se fija por llamada (`mode`) o para todo el servidor (`XOLOTL_MODE`); útil en redes aisladas o bajo cumplimiento. Ver [`docs/catalogo/`](docs/catalogo/README.md).
 - Procesos sin shell, con argumentos en arreglo: nada de inyección por comillas en rutas o parámetros.
 - Gitleaks corre con `--redact`; Trivy enmascara; las cabeceras de autenticación del DAST se redactan antes de guardar.
 - DAST solo contra `localhost` y los objetivos de `scope.json`. Se rechazan alcances como `*`, comodines de TLD o rangos mayores a `/16`. Plantillas intrusivas (dos, fuzz, fuerza bruta, default-login, rce) y detección fuera de banda (interactsh) desactivadas salvo que se pidan explícitamente.

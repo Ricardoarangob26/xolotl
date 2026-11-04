@@ -12,7 +12,7 @@ if (!name) {
 }
 const here = path.dirname(fileURLToPath(import.meta.url));
 const client = new Client({ name: "call", version: "0.0.0" });
-await client.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(here, "..", "dist", "index.js")] }));
+await client.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(here, "..", "dist", "index.js")], env: process.env }));
 const r = await client.callTool({ name, arguments: JSON.parse(json) }, undefined, { timeout: 6 * 60 * 60_000, resetTimeoutOnProgress: true });
 console.log(r.content.map((c) => c.text).join("\n"));
 await client.close();

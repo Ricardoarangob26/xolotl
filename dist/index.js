@@ -39143,6 +39143,74 @@ function matchScope(target) {
 }
 var builtinScope = () => BUILTIN;
 
+// src/tier.ts
+var defaultMode = () => (process.env.XOLOTL_MODE ?? "").trim().toLowerCase() === "advisory" ? "advisory" : "execute";
+var resolveMode = (requested) => requested ?? defaultMode();
+function scopeNote(hosts) {
+  const out = hosts.filter((h) => !matchScope(h));
+  if (!out.length) return "Alcance: todos los objetivos est\xE1n autorizados en dast_scope.";
+  return `Alcance: \u26A0\uFE0F fuera de dast_scope \u2192 ${out.join(", ")}. Corre esto solo si tienes autorizaci\xF3n escrita; reg\xEDstralo con dast_scope si procede.`;
+}
+var portsSpec = (ports) => {
+  if (ports.length <= 40) return `-p${ports.join(",")}`;
+  return "--top-ports 1000";
+};
+function advisoryNetwork(hosts, ports) {
+  const h = hosts.join(" ");
+  return [
+    "## Tier 1 \xB7 advisory \u2014 reconocimiento de red",
+    scopeNote(hosts),
+    "",
+    "Corre esto desde un host autorizado y p\xE9game la salida; la interpreto y la cargo como hallazgos.",
+    "",
+    "Puertos y versiones de servicio:",
+    `  nmap -Pn -sV ${portsSpec(ports)} ${h}`,
+    "",
+    "Postura TLS (en los puertos con HTTPS/TLS, p. ej. 443):",
+    `  nmap -Pn --script ssl-enum-ciphers,ssl-cert -p443 ${h}`,
+    "",
+    "Configuraci\xF3n SSH (en los hosts con 22 abierto):",
+    `  ssh-audit ${hosts[0]}        # uno por host; requiere pip install ssh-audit o 'uvx ssh-audit'`,
+    "",
+    "Volver: pega la salida de texto aqu\xED. (El ingreso estructurado de nmap est\xE1 en la hoja de ruta.)"
+  ].join("\n");
+}
+function advisoryDast(opts) {
+  const flags = [
+    opts.targets.length === 1 ? `-u ${opts.targets[0]}` : `-l objetivos.txt   # un objetivo por l\xEDnea: ${opts.targets.join(", ")}`,
+    opts.profile === "automatic" ? "-as" : "",
+    opts.tags?.length ? `-tags ${opts.tags.join(",")}` : "",
+    opts.templates?.length ? `-t ${opts.templates.join(" -t ")}` : "",
+    opts.severity?.length ? `-severity ${opts.severity.join(",")}` : "",
+    `-rl ${opts.rateLimit} -c ${opts.concurrency}`,
+    "-etags dos,fuzz,brute-force,intrusive",
+    "-je nuclei-salida.json"
+  ].filter(Boolean).join(" ");
+  return [
+    "## Tier 1 \xB7 advisory \u2014 prueba din\xE1mica (Nuclei)",
+    scopeNote(opts.targets),
+    "",
+    "Corre esto desde un host autorizado (-etags excluye intrusivas, como hace Xolotl):",
+    `  nuclei ${flags}`,
+    "",
+    "Volver: pega la salida, o el contenido de nuclei-salida.json, aqu\xED."
+  ].join("\n");
+}
+function advisoryHost(scriptPath) {
+  return [
+    "## Tier 1 \xB7 advisory \u2014 servidor Linux (recolector de solo lectura)",
+    `Script escrito en ${scriptPath}. No instala ni cambia nada y no copia secretos.`,
+    "",
+    "En el servidor (MobaXterm, consola, basti\xF3n):",
+    "  1. Subir el script (SFTP/scp) o pegarlo:  cat > ~/xolotl-collect.sh   (pegar, Ctrl+D)",
+    "  2. sudo sh ~/xolotl-collect.sh > ~/xolotl-$(hostname -s).txt",
+    "     (sin sudo tambi\xE9n corre, con menos comprobaciones)",
+    "  3. Descargar el .txt.",
+    "",
+    "Volver: scan_host con collected_file=<ruta del .txt>. El ingreso es completo (no es texto libre)."
+  ].join("\n");
+}
+
 // src/index.ts
 var server = new McpServer(
   { name: "xolotl", version: "0.1.0" },
@@ -39207,7 +39275,9 @@ server.registerTool(
         return `\u2713 ${id.padEnd(12)} ${v ?? "versi\xF3n ?"} (${t.source}: ${t.source === "uvx" ? "uvx " + t.prefix.join(" ") : t.cmd}) \u2014 ${SPECS[id].purpose}`;
       })
     );
-    return text([`Carpeta de trabajo: ${HOME}`, ...rows, `Alcance DAST: ${SCOPE_FILE} (${loadScope().length} objetivos autorizados + localhost)`].join("\n"));
+    const mode = defaultMode();
+    const modeLine = `Modo por defecto: ${mode === "advisory" ? "advisory (Tier 1 \u2014 no se conecta a objetivos; entrega comandos)" : "execute (Tier 2 \u2014 escanea directamente)"}${process.env.XOLOTL_MODE ? " [XOLOTL_MODE]" : ""}`;
+    return text([`Carpeta de trabajo: ${HOME}`, modeLine, ...rows, `Alcance DAST: ${SCOPE_FILE} (${loadScope().length} objetivos autorizados + localhost)`].join("\n"));
   }
 );
 server.registerTool(
@@ -39361,6 +39431,7 @@ server.registerTool(
       targets: external_exports.array(external_exports.string()).min(1).max(64).describe("Hosts, host:puerto o CIDR IPv4 (/22 o menor). Cada host debe estar en el alcance autorizado"),
       ports: external_exports.union([external_exports.literal("top"), external_exports.literal("full"), external_exports.array(external_exports.number().int().min(1).max(65535))]).optional().describe("'top' (~90 comunes, por defecto), 'full' (1-65535, lento) o una lista"),
       ssh_audit: external_exports.boolean().optional().describe("Auditar con ssh-audit los hosts con SSH abierto (por defecto true)"),
+      mode: external_exports.enum(["advisory", "execute"]).optional().describe("advisory (Tier 1): no se conecta, entrega el comando para correr a mano. execute (Tier 2): escanea. Por defecto, XOLOTL_MODE o execute"),
       connect_timeout_ms: external_exports.number().min(100).max(1e4).optional().describe("Tiempo de espera por puerto (por defecto 1200)"),
       concurrency: external_exports.number().min(1).max(512).optional().describe("Puertos en paralelo por host (por defecto 120)"),
       timeout_minutes: external_exports.number().min(1).max(120).optional()
@@ -39371,16 +39442,18 @@ server.registerTool(
     let hosts = [];
     try {
       const custom2 = [];
+      const mode = resolveMode(a.mode);
       for (const t of a.targets) {
         const { hosts: hs, port } = expandTargets(t);
         for (const h of hs) {
-          if (!matchScope(h)) return fail(`${h} (de ${t}) no est\xE1 en el alcance autorizado. Reg\xEDstralo con dast_scope action=add (authorized_by + evidence) tras confirmar que puedes probarlo.`);
+          if (mode === "execute" && !matchScope(h)) return fail(`${h} (de ${t}) no est\xE1 en el alcance autorizado. Reg\xEDstralo con dast_scope action=add (authorized_by + evidence) tras confirmar que puedes probarlo.`);
           hosts.push(h);
           if (port) custom2.push(port);
         }
       }
       hosts = [...new Set(hosts)];
       const ports = a.ports === "full" ? Array.from({ length: 65535 }, (_, i) => i + 1) : Array.isArray(a.ports) ? a.ports : [.../* @__PURE__ */ new Set([...TOP_PORTS, ...custom2])];
+      if (mode === "advisory") return text(advisoryNetwork(hosts, ports));
       const { meta: meta3, dir } = newRun("network", a.targets.join(" "), { hosts: hosts.length, ports: ports.length, scope: a.targets.map((t) => t) });
       progress(extra, 0, hosts.length, `sondeando ${hosts.length} host(s) \xD7 ${ports.length} puertos`);
       const { outcomes } = await scanNetwork(
@@ -39430,6 +39503,7 @@ server.registerTool(
       identity_file: external_exports.string().optional().describe("Llave privada SSH a usar"),
       sudo: external_exports.boolean().optional().describe("Ejecutar el recolector con sudo -n (por defecto true; si sudo pide contrase\xF1a, falla en vez de preguntar)"),
       collected_file: external_exports.string().optional().describe("Salida de host_collector ejecutado a mano en el servidor"),
+      mode: external_exports.enum(["advisory", "execute"]).optional().describe("advisory (Tier 1): no entra por SSH, escribe el recolector y da los pasos para correrlo a mano. execute (Tier 2): entra por SSH. Por defecto, XOLOTL_MODE o execute. Con collected_file se ignora (ya es ingreso)"),
       ignore_unfixed: external_exports.boolean().optional().describe("Omitir vulnerabilidades sin parche publicado por la distribuci\xF3n"),
       timeout_minutes: external_exports.number().min(1).max(60).optional()
     },
@@ -39437,6 +39511,13 @@ server.registerTool(
   },
   async (a, extra) => {
     if (!!a.target === !!a.collected_file) return fail("Indica target (SSH) o collected_file, uno de los dos.");
+    if (a.target && resolveMode(a.mode) === "advisory") {
+      ensureDirs();
+      const file2 = path9.join(HOME, "xolotl-collect.sh");
+      fs11.mkdirSync(path9.dirname(file2), { recursive: true });
+      fs11.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+      return text(advisoryHost(file2));
+    }
     const timeoutMs = minutes(a.timeout_minutes ?? 15);
     let collected;
     let via;
@@ -39518,11 +39599,17 @@ server.registerTool(
       headers: external_exports.array(external_exports.string()).optional().describe('Cabeceras para pruebas autenticadas, p. ej. "Cookie: session=\u2026". Se redactan en los resultados guardados'),
       allow_intrusive: external_exports.boolean().optional().describe("Permite plantillas intrusivas (dos/fuzz/bruteforce/rce). Solo con autorizaci\xF3n expl\xEDcita para ello"),
       allow_oob: external_exports.boolean().optional().describe("Permite interactsh (detecci\xF3n fuera de banda v\xEDa servidores externos)"),
+      mode: external_exports.enum(["advisory", "execute"]).optional().describe("advisory (Tier 1): no se conecta, entrega el comando de Nuclei para correr a mano. execute (Tier 2): lanza. Por defecto, XOLOTL_MODE o execute"),
       timeout_minutes: external_exports.number().min(1).max(240).optional()
     },
     annotations: { openWorldHint: true, destructiveHint: false }
   },
   async (args, extra) => {
+    const mode = resolveMode(args.mode);
+    const profile = args.profile ?? (args.templates?.length || args.tags?.length ? "custom" : "baseline");
+    if (mode === "advisory") {
+      return text(advisoryDast({ targets: args.targets, profile, tags: args.tags, templates: args.templates, severity: args.severity, rateLimit: args.rate_limit ?? 30, concurrency: args.concurrency ?? 10 }));
+    }
     const outOfScope = args.targets.filter((t) => !matchScope(t));
     if (outOfScope.length) {
       return fail(
@@ -39530,7 +39617,6 @@ server.registerTool(
 Confirma con el usuario que tiene autorizaci\xF3n para probarlos y reg\xEDstralos con dast_scope action=add (authorized_by + evidence).`
       );
     }
-    const profile = args.profile ?? (args.templates?.length || args.tags?.length ? "custom" : "baseline");
     const { meta: meta3, dir } = newRun("dast", args.targets.join(" "), {
       profile,
       tags: args.tags,

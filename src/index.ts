@@ -29,6 +29,7 @@ import COLLECTOR from "./collector.sh";
 import { addScope, builtinScope, expandTargets, loadScope, matchScope, removeScope } from "./scope.js";
 import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage } from "./store.js";
 import { findingHistory, inventorySummary, listAssets, queryFindings } from "./inventory.js";
+import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 
 const server = new McpServer(
   { name: "xolotl", version: "0.1.0" },
@@ -108,7 +109,9 @@ server.registerTool(
         return `✓ ${id.padEnd(12)} ${v ?? "versión ?"} (${t.source}: ${t.source === "uvx" ? "uvx " + t.prefix.join(" ") : t.cmd}) — ${SPECS[id].purpose}`;
       }),
     );
-    return text([`Carpeta de trabajo: ${HOME}`, ...rows, `Alcance DAST: ${SCOPE_FILE} (${loadScope().length} objetivos autorizados + localhost)`].join("\n"));
+    const mode = defaultMode();
+    const modeLine = `Modo por defecto: ${mode === "advisory" ? "advisory (Tier 1 — no se conecta a objetivos; entrega comandos)" : "execute (Tier 2 — escanea directamente)"}${process.env.XOLOTL_MODE ? " [XOLOTL_MODE]" : ""}`;
+    return text([`Carpeta de trabajo: ${HOME}`, modeLine, ...rows, `Alcance DAST: ${SCOPE_FILE} (${loadScope().length} objetivos autorizados + localhost)`].join("\n"));
   },
 );
 
@@ -284,6 +287,7 @@ server.registerTool(
       targets: z.array(z.string()).min(1).max(64).describe("Hosts, host:puerto o CIDR IPv4 (/22 o menor). Cada host debe estar en el alcance autorizado"),
       ports: z.union([z.literal("top"), z.literal("full"), z.array(z.number().int().min(1).max(65535))]).optional().describe("'top' (~90 comunes, por defecto), 'full' (1-65535, lento) o una lista"),
       ssh_audit: z.boolean().optional().describe("Auditar con ssh-audit los hosts con SSH abierto (por defecto true)"),
+      mode: z.enum(["advisory", "execute"]).optional().describe("advisory (Tier 1): no se conecta, entrega el comando para correr a mano. execute (Tier 2): escanea. Por defecto, XOLOTL_MODE o execute"),
       connect_timeout_ms: z.number().min(100).max(10000).optional().describe("Tiempo de espera por puerto (por defecto 1200)"),
       concurrency: z.number().min(1).max(512).optional().describe("Puertos en paralelo por host (por defecto 120)"),
       timeout_minutes: z.number().min(1).max(120).optional(),
@@ -294,16 +298,19 @@ server.registerTool(
     let hosts: string[] = [];
     try {
       const custom: number[] = [];
+      const mode = resolveMode(a.mode);
       for (const t of a.targets) {
         const { hosts: hs, port } = expandTargets(t);
         for (const h of hs) {
-          if (!matchScope(h)) return fail(`${h} (de ${t}) no está en el alcance autorizado. Regístralo con dast_scope action=add (authorized_by + evidence) tras confirmar que puedes probarlo.`);
+          // En advisory no se exige alcance para bloquear: el usuario corre el comando; solo se avisa.
+          if (mode === "execute" && !matchScope(h)) return fail(`${h} (de ${t}) no está en el alcance autorizado. Regístralo con dast_scope action=add (authorized_by + evidence) tras confirmar que puedes probarlo.`);
           hosts.push(h);
           if (port) custom.push(port);
         }
       }
       hosts = [...new Set(hosts)];
       const ports = a.ports === "full" ? Array.from({ length: 65535 }, (_, i) => i + 1) : Array.isArray(a.ports) ? a.ports : [...new Set([...TOP_PORTS, ...custom])];
+      if (mode === "advisory") return text(advisoryNetwork(hosts, ports));
       const { meta, dir } = newRun("network", a.targets.join(" "), { hosts: hosts.length, ports: ports.length, scope: a.targets.map((t) => t) });
       progress(extra as Extra, 0, hosts.length, `sondeando ${hosts.length} host(s) × ${ports.length} puertos`);
       const { outcomes } = await scanNetwork(
@@ -359,6 +366,7 @@ server.registerTool(
       identity_file: z.string().optional().describe("Llave privada SSH a usar"),
       sudo: z.boolean().optional().describe("Ejecutar el recolector con sudo -n (por defecto true; si sudo pide contraseña, falla en vez de preguntar)"),
       collected_file: z.string().optional().describe("Salida de host_collector ejecutado a mano en el servidor"),
+      mode: z.enum(["advisory", "execute"]).optional().describe("advisory (Tier 1): no entra por SSH, escribe el recolector y da los pasos para correrlo a mano. execute (Tier 2): entra por SSH. Por defecto, XOLOTL_MODE o execute. Con collected_file se ignora (ya es ingreso)"),
       ignore_unfixed: z.boolean().optional().describe("Omitir vulnerabilidades sin parche publicado por la distribución"),
       timeout_minutes: z.number().min(1).max(60).optional(),
     },
@@ -366,6 +374,14 @@ server.registerTool(
   },
   async (a, extra) => {
     if (!!a.target === !!a.collected_file) return fail("Indica target (SSH) o collected_file, uno de los dos.");
+    // Tier 1: si se iba a entrar por SSH, en advisory se entrega el recolector en vez de conectarse.
+    if (a.target && resolveMode(a.mode) === "advisory") {
+      ensureDirs();
+      const file = path.join(HOME, "xolotl-collect.sh");
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, COLLECTOR.replace(/\r\n/g, "\n"));
+      return text(advisoryHost(file));
+    }
     const timeoutMs = minutes(a.timeout_minutes ?? 15);
     let collected: string;
     let via: string;
@@ -450,11 +466,17 @@ server.registerTool(
       headers: z.array(z.string()).optional().describe('Cabeceras para pruebas autenticadas, p. ej. "Cookie: session=…". Se redactan en los resultados guardados'),
       allow_intrusive: z.boolean().optional().describe("Permite plantillas intrusivas (dos/fuzz/bruteforce/rce). Solo con autorización explícita para ello"),
       allow_oob: z.boolean().optional().describe("Permite interactsh (detección fuera de banda vía servidores externos)"),
+      mode: z.enum(["advisory", "execute"]).optional().describe("advisory (Tier 1): no se conecta, entrega el comando de Nuclei para correr a mano. execute (Tier 2): lanza. Por defecto, XOLOTL_MODE o execute"),
       timeout_minutes: z.number().min(1).max(240).optional(),
     },
     annotations: { openWorldHint: true, destructiveHint: false },
   },
   async (args, extra) => {
+    const mode = resolveMode(args.mode);
+    const profile = args.profile ?? (args.templates?.length || args.tags?.length ? "custom" : "baseline");
+    if (mode === "advisory") {
+      return text(advisoryDast({ targets: args.targets, profile, tags: args.tags, templates: args.templates, severity: args.severity, rateLimit: args.rate_limit ?? 30, concurrency: args.concurrency ?? 10 }));
+    }
     const outOfScope = args.targets.filter((t) => !matchScope(t));
     if (outOfScope.length) {
       return fail(
@@ -462,7 +484,6 @@ server.registerTool(
           "Confirma con el usuario que tiene autorización para probarlos y regístralos con dast_scope action=add (authorized_by + evidence).",
       );
     }
-    const profile = args.profile ?? (args.templates?.length || args.tags?.length ? "custom" : "baseline");
     const { meta, dir } = newRun("dast", args.targets.join(" "), {
       profile,
       tags: args.tags,
