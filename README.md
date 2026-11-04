@@ -82,6 +82,8 @@ recolector (solo lectura)  →  paquetes + configuración  →  SBOM con distrib
 
 ### Hoja de ruta
 
+> Catálogo navegable de capacidades por nivel de acceso: [`docs/catalogo/`](docs/catalogo/README.md) · hoja de ruta completa: [`ROADMAP.md`](ROADMAP.md).
+
 Hecho: `scan_network` (descubrimiento TCP + TLS nativo, ssh-audit). Lo que sigue:
 
 | Próximo | Motor previsto |
