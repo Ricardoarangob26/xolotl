@@ -124,8 +124,10 @@ function fingerprintOf(f: Finding): string {
   switch (f.category) {
     case "sca":
     case "container":
-    case "host":
       return hash([f.category, loc.target ?? "", f.package ? pkgKey(f.package) : "", primaryVulnId(f)]);
+    // Host: un hallazgo agregado por paquete+versión; la huella es estable aunque roten las CVE del grupo.
+    case "host":
+      return hash([f.category, loc.target ?? "", f.package ? pkgKey(f.package) : f.ruleId]);
     case "secret":
       return hash([f.category, loc.file, loc.startLine, loc.commit ?? ""]);
     case "dast":

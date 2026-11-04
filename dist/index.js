@@ -36956,8 +36956,10 @@ function fingerprintOf(f) {
   switch (f.category) {
     case "sca":
     case "container":
-    case "host":
       return hash2([f.category, loc.target ?? "", f.package ? pkgKey(f.package) : "", primaryVulnId(f)]);
+    // Host: un hallazgo agregado por paquete+versión; la huella es estable aunque roten las CVE del grupo.
+    case "host":
+      return hash2([f.category, loc.target ?? "", f.package ? pkgKey(f.package) : f.ruleId]);
     case "secret":
       return hash2([f.category, loc.file, loc.startLine, loc.commit ?? ""]);
     case "dast":
@@ -37959,6 +37961,68 @@ function checksToFindings(checks, info) {
     remediation: c.remediation
   }));
 }
+function maxVersion(a, b) {
+  return b.localeCompare(a, void 0, { numeric: true, sensitivity: "base" }) > 0 ? b : a;
+}
+function aggregateHostVulns(raw) {
+  const groups = /* @__PURE__ */ new Map();
+  const passthrough = [];
+  let rawCount = 0;
+  for (const f of raw) {
+    if (f.category !== "host" || !f.package?.name) {
+      passthrough.push(f);
+      continue;
+    }
+    rawCount++;
+    const key = `${f.location?.target ?? ""}|${f.package.name.toLowerCase()}|${f.package.version ?? ""}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)).push(f);
+  }
+  const aggregated = [];
+  for (const items of groups.values()) {
+    const pkg = items[0].package;
+    const counts = Object.fromEntries(SEVERITIES.map((s) => [s, 0]));
+    const cves = /* @__PURE__ */ new Set();
+    const refs = /* @__PURE__ */ new Set();
+    const cwe = /* @__PURE__ */ new Set();
+    let worst = "info";
+    let fix;
+    let fixable = 0;
+    for (const it of items) {
+      counts[it.severity]++;
+      if (sevRank(it.severity) < sevRank(worst)) worst = it.severity;
+      for (const c of it.cve ?? []) cves.add(c);
+      for (const r of it.references ?? []) refs.add(r);
+      for (const c of it.cwe ?? []) cwe.add(c);
+      const fv = it.package?.fixedVersion;
+      if (fv) {
+        fixable++;
+        fix = fix ? maxVersion(fix, fv) : fv;
+      }
+    }
+    const breakdown = SEVERITIES.filter((s) => counts[s]).map((s) => `${counts[s]} ${s}`).join(", ");
+    const version2 = pkg.version ?? "?";
+    const sortedCves = [...cves].sort();
+    aggregated.push({
+      tool: "trivy",
+      category: "host",
+      severity: worst,
+      ruleId: `XOL-PKG-${pkg.name}`,
+      title: `${pkg.name} ${version2}: ${items.length} CVE (${breakdown})${fix ? ` \u2014 parche ${fix}` : " \u2014 sin parche publicado"}`,
+      description: `El paquete ${pkg.name} ${version2} acumula ${items.length} vulnerabilidades conocidas (${breakdown}). ` + (fixable ? `${fixable} de ${items.length} tienen parche publicado por la distribuci\xF3n.` : `Ninguna tiene parche publicado todav\xEDa por la distribuci\xF3n.`) + (cves.size > 60 ? ` Lista completa de CVE en el artefacto trivy-host.json de la corrida.` : ""),
+      location: items[0].location,
+      // Se guardan los primeros CVE como muestra; el archivo crudo de la corrida tiene todos.
+      cve: sortedCves.slice(0, 60),
+      cwe: [...cwe].slice(0, 30),
+      ids: sortedCves.slice(0, 60),
+      package: { name: pkg.name, version: pkg.version, ecosystem: pkg.ecosystem, fixedVersion: fix },
+      evidence: `${items.length} CVE en total${cves.size !== items.length ? ` (${cves.size} identificadores distintos)` : ""}; ${breakdown}.`,
+      references: [...refs].slice(0, 5),
+      remediation: fix ? `Actualizar ${pkg.name} a ${fix} o posterior (dnf/apt/zypper upgrade) y, si es kernel o librer\xEDa base (glibc/openssl), reiniciar para que el parche quede activo.` : `Sin parche de la distribuci\xF3n a\xFAn: seguir el aviso del proveedor, aplicar mitigaciones o restringir el acceso al servicio afectado.`
+    });
+  }
+  aggregated.sort((a, b) => sevRank(a.severity) - sevRank(b.severity) || (b.ids?.length ?? 0) - (a.ids?.length ?? 0));
+  return { findings: [...passthrough, ...aggregated], rawCount, packages: aggregated.length };
+}
 function writeArtifacts(dir, text2, sbom) {
   fs8.writeFileSync(path7.join(dir, "host-collect.txt"), text2);
   const file2 = path7.join(dir, "host.cdx.json");
@@ -38832,9 +38896,10 @@ async function scanHostText(dir, text2, ignoreUnfixed, timeoutMs) {
     const args = ["sbom", "--scanners", "vuln", "--format", "json", "--output", out, "--quiet", "--timeout", `${Math.round(timeoutMs / 6e4)}m`, ...ignoreUnfixed ? ["--ignore-unfixed"] : [], sbomFile];
     const r = await exe(t, args, { timeoutMs });
     needOutput(out, r, "trivy sbom");
-    const findings = parseTrivy(readJson(out), null, "host", info.hostname);
+    const perCve = parseTrivy(readJson(out), null, "host", info.hostname);
+    const { findings, rawCount, packages } = aggregateHostVulns(perCve);
     const fixable = findings.filter((f) => f.package?.fixedVersion).length;
-    return { findings, message: `${info.packages} paquetes de ${info.osName}; ${fixable} de ${findings.length} con parche publicado` };
+    return { findings, message: `${info.packages} paquetes de ${info.osName}; ${rawCount} CVE en ${packages} paquetes afectados, ${fixable} con parche publicado` };
   });
   return { info, outcomes: [config2, vulns] };
 }

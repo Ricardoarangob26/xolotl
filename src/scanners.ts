@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { resolveTool, ResolvedTool, ToolId, toolVersion } from "./binaries.js";
 import { run, tail, which } from "./exec.js";
-import { buildSbom, checksToFindings, hardeningChecks, HostInfo, hostInfo, parseCollected, writeArtifacts } from "./host.js";
+import { aggregateHostVulns, buildSbom, checksToFindings, hardeningChecks, HostInfo, hostInfo, parseCollected, writeArtifacts } from "./host.js";
 import { HostResult, inventoryFinding, networkFindings, scanHostPorts } from "./network.js";
 import { RawFinding } from "./findings.js";
 import { parseBandit, parseGitleaks, parseNuclei, parseOsv, parseSarif, parseSemgrep, parseTrivy } from "./parsers.js";
@@ -350,9 +350,12 @@ export async function scanHostText(dir: string, text: string, ignoreUnfixed: boo
     const args = ["sbom", "--scanners", "vuln", "--format", "json", "--output", out, "--quiet", "--timeout", `${Math.round(timeoutMs / 60_000)}m`, ...(ignoreUnfixed ? ["--ignore-unfixed"] : []), sbomFile];
     const r = await exe(t, args, { timeoutMs });
     needOutput(out, r, "trivy sbom");
-    const findings = parseTrivy(readJson(out), null, "host", info.hostname);
+    const perCve = parseTrivy(readJson(out), null, "host", info.hostname);
+    // Un host con kernels viejos genera decenas de miles de CVE: se agregan a un hallazgo por paquete
+    // (la lista completa queda en trivy-host.json). Ver host.aggregateHostVulns.
+    const { findings, rawCount, packages } = aggregateHostVulns(perCve);
     const fixable = findings.filter((f) => f.package?.fixedVersion).length;
-    return { findings, message: `${info.packages} paquetes de ${info.osName}; ${fixable} de ${findings.length} con parche publicado` };
+    return { findings, message: `${info.packages} paquetes de ${info.osName}; ${rawCount} CVE en ${packages} paquetes afectados, ${fixable} con parche publicado` };
   });
   return { info, outcomes: [config, vulns] };
 }

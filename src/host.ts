@@ -7,7 +7,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { RawFinding, Severity } from "./findings.js";
+import { RawFinding, Severity, sevRank, SEVERITIES } from "./findings.js";
 
 export type Sections = Map<string, string[]>;
 
@@ -381,6 +381,90 @@ export function checksToFindings(checks: Check[], info: HostInfo): RawFinding[] 
     evidence: c.evidence,
     remediation: c.remediation,
   }));
+}
+
+// ───────────── Agregación de CVE por paquete ─────────────
+
+/** Compara dos versiones "a.b.c-rel" numéricamente; devuelve la mayor (o la primera si no se puede comparar). */
+function maxVersion(a: string, b: string): string {
+  return b.localeCompare(a, undefined, { numeric: true, sensitivity: "base" }) > 0 ? b : a;
+}
+
+/**
+ * Un escaneo de host devuelve un hallazgo por CVE: un servidor con kernels viejos genera decenas de
+ * miles (cada CVE del kernel, por cada versión instalada), y el informe se vuelve inservible. Esto los
+ * colapsa a **un hallazgo accionable por paquete + versión instalada**: peor severidad, conteo por nivel
+ * y la versión de parche más alta (actualizar a ella cubre las menores). La lista completa de CVE queda
+ * en `trivy-host.json` dentro de la corrida. Los hallazgos que no son vulnerabilidades de paquete (no
+ * deberían llegar aquí en modo host) pasan sin tocar.
+ */
+export function aggregateHostVulns(raw: RawFinding[]): { findings: RawFinding[]; rawCount: number; packages: number } {
+  const groups = new Map<string, RawFinding[]>();
+  const passthrough: RawFinding[] = [];
+  let rawCount = 0;
+  for (const f of raw) {
+    if (f.category !== "host" || !f.package?.name) {
+      passthrough.push(f);
+      continue;
+    }
+    rawCount++;
+    const key = `${f.location?.target ?? ""}|${f.package.name.toLowerCase()}|${f.package.version ?? ""}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(f);
+  }
+
+  const aggregated: RawFinding[] = [];
+  for (const items of groups.values()) {
+    const pkg = items[0].package!;
+    const counts = Object.fromEntries(SEVERITIES.map((s) => [s, 0])) as Record<Severity, number>;
+    const cves = new Set<string>();
+    const refs = new Set<string>();
+    const cwe = new Set<string>();
+    let worst: Severity = "info";
+    let fix: string | undefined;
+    let fixable = 0;
+    for (const it of items) {
+      counts[it.severity]++;
+      if (sevRank(it.severity) < sevRank(worst)) worst = it.severity;
+      for (const c of it.cve ?? []) cves.add(c);
+      for (const r of it.references ?? []) refs.add(r);
+      for (const c of it.cwe ?? []) cwe.add(c);
+      const fv = it.package?.fixedVersion;
+      if (fv) {
+        fixable++;
+        fix = fix ? maxVersion(fix, fv) : fv;
+      }
+    }
+    const breakdown = SEVERITIES.filter((s) => counts[s]).map((s) => `${counts[s]} ${s}`).join(", ");
+    const version = pkg.version ?? "?";
+    const sortedCves = [...cves].sort();
+    aggregated.push({
+      tool: "trivy",
+      category: "host",
+      severity: worst,
+      ruleId: `XOL-PKG-${pkg.name}`,
+      title: `${pkg.name} ${version}: ${items.length} CVE (${breakdown})${fix ? ` — parche ${fix}` : " — sin parche publicado"}`,
+      description:
+        `El paquete ${pkg.name} ${version} acumula ${items.length} vulnerabilidades conocidas (${breakdown}). ` +
+        (fixable
+          ? `${fixable} de ${items.length} tienen parche publicado por la distribución.`
+          : `Ninguna tiene parche publicado todavía por la distribución.`) +
+        (cves.size > 60 ? ` Lista completa de CVE en el artefacto trivy-host.json de la corrida.` : ""),
+      location: items[0].location,
+      // Se guardan los primeros CVE como muestra; el archivo crudo de la corrida tiene todos.
+      cve: sortedCves.slice(0, 60),
+      cwe: [...cwe].slice(0, 30),
+      ids: sortedCves.slice(0, 60),
+      package: { name: pkg.name, version: pkg.version, ecosystem: pkg.ecosystem, fixedVersion: fix },
+      evidence: `${items.length} CVE en total${cves.size !== items.length ? ` (${cves.size} identificadores distintos)` : ""}; ${breakdown}.`,
+      references: [...refs].slice(0, 5),
+      remediation: fix
+        ? `Actualizar ${pkg.name} a ${fix} o posterior (dnf/apt/zypper upgrade) y, si es kernel o librería base (glibc/openssl), reiniciar para que el parche quede activo.`
+        : `Sin parche de la distribución aún: seguir el aviso del proveedor, aplicar mitigaciones o restringir el acceso al servicio afectado.`,
+    });
+  }
+  // Más afectados primero dentro de cada severidad; finalize() reordena por severidad global.
+  aggregated.sort((a, b) => sevRank(a.severity) - sevRank(b.severity) || (b.ids?.length ?? 0) - (a.ids?.length ?? 0));
+  return { findings: [...passthrough, ...aggregated], rawCount, packages: aggregated.length };
 }
 
 /** Guarda la recolección cruda y el SBOM en la carpeta de la corrida. */
