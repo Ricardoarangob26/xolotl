@@ -22,17 +22,17 @@ Ninguna capacidad nueva introduce un servicio externo obligatorio.
 
 ---
 
-## Fase 1 — Memoria y catálogo (próximo)
+## Fase 1 — Memoria y catálogo (en curso)
 
 Lo que destiló la revisión de [`pentest-ai-agents`](https://github.com/0xSteph/pentest-ai-agents):
 tomar su estética y su modelo, no su dependencia de la nube.
 
-| Tarea | Qué agrega | Inspiración |
-|---|---|---|
-| **BD local SQLite** | Migrar los hallazgos de JSON en `~/.xolotl` a SQLite local con huella estable, columna `tool_used` e índices. Persiste el inventario entre corridas. | Su `findings.sh` + esquema |
-| **Catálogo de skills por dominio** | Las skills ordenadas por nivel de acceso al objetivo, navegables en markdown. | Su catálogo de agentes `.md` |
-| **Niveles de ejecución (Tier 1 / Tier 2)** | *Advisory* (el agente aconseja y tú corres el comando — tu flujo de MobaXterm) vs *Execution* (el agente compone el comando, lo valida contra el alcance y lo muestra para aprobación). | Su modelo de dos niveles |
-| **Inventario / ecosistema** | Con prompting, explorar sistemas e ir acumulando un inventario local (hosts, servicios, versiones, hallazgos) que crece corrida a corrida. | Tu petición original |
+| Tarea | Estado | Qué agrega | Inspiración |
+|---|---|---|---|
+| **BD local SQLite** | ✅ | Hallazgos, corridas y enlaces en `~/.xolotl/xolotl.db` con huella estable, columna `tool_used` e índices. Motor `node:sqlite` nativo (Node 22.5+) con respaldo JSON. | Su `findings.sh` + esquema |
+| **Inventario / ecosistema** | ✅ | Tool `inventory`: resumen del ecosistema, activos, hallazgos en el tiempo (nuevos/persistentes/desaparecidos) e historia por huella. Crece solo con cada corrida. | Tu petición original |
+| **Catálogo de skills por dominio** | 🧭 | Las skills ordenadas por nivel de acceso al objetivo, navegables en markdown. Base en [`docs/catalogo/`](docs/catalogo/README.md). | Su catálogo de agentes `.md` |
+| **Niveles de ejecución (Tier 1 / Tier 2)** | 🧭 | *Advisory* (el agente aconseja y tú corres el comando — tu flujo de MobaXterm) vs *Execution* (el agente compone el comando, lo valida contra el alcance y lo muestra para aprobación). | Su modelo de dos niveles |
 
 ## Fase 2 — Más superficie de sistema
 

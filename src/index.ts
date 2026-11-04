@@ -28,6 +28,7 @@ import { TOP_PORTS } from "./network.js";
 import COLLECTOR from "./collector.sh";
 import { addScope, builtinScope, expandTargets, loadScope, matchScope, removeScope } from "./scope.js";
 import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage } from "./store.js";
+import { findingHistory, inventorySummary, listAssets, queryFindings } from "./inventory.js";
 
 const server = new McpServer(
   { name: "xolotl", version: "0.1.0" },
@@ -658,6 +659,87 @@ server.registerTool(
         ...(added.length ? ["", "Nuevos (revisar):", ...added.map((f) => `  ${oneLine(f)}`)] : []),
       ];
       return text(out.join("\n"));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "inventory",
+  {
+    title: "Inventario acumulado",
+    description:
+      "Consulta la memoria larga de Xolotl, que crece con cada corrida: resumen del ecosistema, activos vistos, hallazgos a través del tiempo (nuevos, persistentes, desaparecidos) y la historia de un hallazgo por su huella. Es la base para explorar sistemas y armar un inventario. No lanza escaneos.",
+    inputSchema: {
+      view: z.enum(["summary", "assets", "findings", "history"]).default("summary").describe("summary: ecosistema; assets: activos; findings: hallazgos acumulados; history: un hallazgo en el tiempo"),
+      severity: z.enum(SEVERITIES).optional(),
+      category: z.array(z.enum(CATEGORIES)).optional(),
+      asset: z.string().optional().describe("Filtra por activo (host, URL o ruta); coincide por fragmento"),
+      status: z.enum(TRIAGE_STATUSES).optional(),
+      seen: z.enum(["all", "latest", "new", "gone"]).optional().describe("latest: vistos en la última corrida; new: aparecieron en ella; gone: ya no aparecen"),
+      include_suppressed: z.boolean().optional().describe("Incluir descartados (false_positive/accepted_risk/fixed)"),
+      fingerprint: z.string().optional().describe("Huella del hallazgo para view=history"),
+      limit: z.number().min(1).max(500).optional(),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async (a) => {
+    try {
+      if (a.view === "summary") {
+        const s = inventorySummary();
+        if (!s.runs) return text("Inventario vacío. Lanza un escaneo (scan_static, scan_network, scan_host…) y se irá poblando solo.");
+        const sev = SEVERITIES.filter((x) => s.bySeverity[x]).map((x) => `${s.bySeverity[x]} ${x}`).join(" · ") || "sin hallazgos activos";
+        const cat = Object.entries(s.byCategory).sort((x, y) => y[1] - x[1]).map(([c, n]) => `${c}:${n}`).join(" ");
+        const last = s.lastRun ? `${s.lastRun.kind} · ${s.lastRun.target} (${s.lastRun.at.slice(0, 16).replace("T", " ")})` : "—";
+        return text(
+          [
+            `Inventario de Xolotl · motor ${s.engine}`,
+            `Corridas: ${s.runs} · Activos: ${s.assets} · Hallazgos activos: ${s.findingsActive} (total histórico ${s.findingsTotal})`,
+            `Severidad: ${sev}`,
+            `Categorías: ${cat}`,
+            `Última corrida: ${last}`,
+          ].join("\n"),
+        );
+      }
+      if (a.view === "assets") {
+        const rows = listAssets();
+        if (!rows.length) return text("Sin activos todavía.");
+        return text(
+          rows
+            .map((r) => {
+              const sev = SEVERITIES.filter((x) => r.bySeverity[x]).map((x) => `${r.bySeverity[x]}${x[0].toUpperCase()}`).join(" ");
+              return `${r.asset} · ${r.total} hallazgos (${sev}) · ${r.categories.join(",")} · visto ${r.firstSeen.slice(0, 10)}→${r.lastSeen.slice(0, 10)}`;
+            })
+            .join("\n"),
+        );
+      }
+      if (a.view === "history") {
+        if (!a.fingerprint) return fail("Indica la huella del hallazgo (fingerprint) para ver su historia.");
+        const { finding, timeline } = findingHistory(a.fingerprint);
+        if (!finding) return fail(`No hay ningún hallazgo con huella ${a.fingerprint} en el inventario.`);
+        const head = `${finding.severity} ${finding.category} · ${finding.title} · ${finding.asset} [${finding.tool_used}] {${finding.status}}`;
+        const lines = timeline.map((t) => `  ${t.at.slice(0, 16).replace("T", " ")} · ${t.kind} · ${t.severity} {${t.status}} · ${t.run_id}`);
+        return text([head, `Visto en ${timeline.length} corrida(s), desde ${finding.first_seen.slice(0, 10)}:`, ...lines].join("\n"));
+      }
+      // findings
+      const rows = queryFindings({
+        severity: a.severity,
+        category: a.category?.[0],
+        asset: a.asset,
+        status: a.status,
+        seen: a.seen,
+        includeSuppressed: a.include_suppressed,
+        limit: a.limit ?? 100,
+      });
+      if (!rows.length) return text("Ningún hallazgo coincide en el inventario.");
+      const out = rows.map((r) => {
+        const pkg = r.pkg_name ? ` ${r.pkg_name}@${r.pkg_version ?? "?"}` : "";
+        const cve = r.cve ? ` ${r.cve}` : "";
+        const n = r.runs > 1 ? ` ×${r.runs}` : "";
+        return `${r.severity} ${r.category}${pkg} — ${r.title}${cve} · ${r.asset} [${r.tool_used}] {${r.status}}${n} · ${r.fingerprint}`;
+      });
+      return text([`${rows.length} hallazgo(s) en el inventario:`, ...out].join("\n"));
     } catch (e) {
       return fail((e as Error).message);
     }

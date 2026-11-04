@@ -7239,12 +7239,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs11, exportName) {
+    function addFormats(ajv, list, fs12, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs11[f]);
+        ajv.addFormat(f, fs12[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7253,7 +7253,7 @@ var require_dist = __commonJS({
 });
 
 // src/index.ts
-import fs10 from "node:fs";
+import fs11 from "node:fs";
 import path9 from "node:path";
 
 // node_modules/zod/v3/helpers/util.js
@@ -36669,6 +36669,8 @@ var TOOLS_DIR = path.join(HOME, "tools");
 var RUNS_DIR = path.join(HOME, "runs");
 var SCOPE_FILE = path.join(HOME, "scope.json");
 var TRIAGE_FILE = path.join(HOME, "triage.json");
+var DB_FILE = path.join(HOME, "xolotl.db");
+var INVENTORY_FILE = path.join(HOME, "inventory.json");
 var DEFAULT_EXCLUDES = [
   "node_modules",
   ".git",
@@ -37204,8 +37206,230 @@ async function installTool(id) {
 }
 
 // src/store.ts
-import fs6 from "node:fs";
+import fs7 from "node:fs";
 import path6 from "node:path";
+
+// src/inventory.ts
+import fs6 from "node:fs";
+function sqliteBackend() {
+  const sqlite = process.getBuiltinModule?.("node:sqlite");
+  if (!sqlite?.DatabaseSync) return null;
+  try {
+    ensureDirs();
+    const db = new sqlite.DatabaseSync(DB_FILE);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS runs (
+        id TEXT PRIMARY KEY, kind TEXT, target TEXT,
+        started_at TEXT, finished_at TEXT, total INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS findings (
+        fingerprint TEXT PRIMARY KEY, asset TEXT, category TEXT, severity TEXT,
+        rule_id TEXT, title TEXT, pkg_name TEXT, pkg_version TEXT, fixed_version TEXT,
+        cve TEXT, tool_used TEXT, status TEXT,
+        first_seen TEXT, last_seen TEXT, first_run TEXT, last_run TEXT, runs INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS run_findings (
+        run_id TEXT, fingerprint TEXT, severity TEXT, status TEXT,
+        PRIMARY KEY (run_id, fingerprint)
+      );
+      CREATE INDEX IF NOT EXISTS idx_find_sev ON findings(severity);
+      CREATE INDEX IF NOT EXISTS idx_find_asset ON findings(asset);
+      CREATE INDEX IF NOT EXISTS idx_find_cat ON findings(category);
+      CREATE INDEX IF NOT EXISTS idx_find_status ON findings(status);
+    `);
+    const cols = "fingerprint,asset,category,severity,rule_id,title,pkg_name,pkg_version,fixed_version,cve,tool_used,status,first_seen,last_seen,first_run,last_run,runs";
+    const up = db.prepare(
+      `INSERT INTO findings (${cols}) VALUES (${cols.split(",").map(() => "?").join(",")})
+       ON CONFLICT(fingerprint) DO UPDATE SET
+         asset=excluded.asset, category=excluded.category, severity=excluded.severity,
+         rule_id=excluded.rule_id, title=excluded.title, pkg_name=excluded.pkg_name,
+         pkg_version=excluded.pkg_version, fixed_version=excluded.fixed_version, cve=excluded.cve,
+         tool_used=excluded.tool_used, status=excluded.status,
+         last_seen=excluded.last_seen, last_run=excluded.last_run, runs=excluded.runs`
+    );
+    const insRun = db.prepare("INSERT OR REPLACE INTO runs (id,kind,target,started_at,finished_at,total) VALUES (?,?,?,?,?,?)");
+    const insLink = db.prepare("INSERT OR REPLACE INTO run_findings (run_id,fingerprint,severity,status) VALUES (?,?,?,?)");
+    const r2f = (r) => [r.fingerprint, r.asset, r.category, r.severity, r.rule_id, r.title, r.pkg_name, r.pkg_version, r.fixed_version, r.cve, r.tool_used, r.status, r.first_seen, r.last_seen, r.first_run, r.last_run, r.runs];
+    return {
+      engine: "sqlite",
+      upsertFinding: (r) => up.run(...r2f(r)),
+      insertRun: (r) => insRun.run(r.id, r.kind, r.target, r.started_at, r.finished_at, r.total),
+      linkRunFinding: (l) => insLink.run(l.run_id, l.fingerprint, l.severity, l.status),
+      allFindings: () => db.prepare("SELECT * FROM findings").all(),
+      allRuns: () => db.prepare("SELECT * FROM runs ORDER BY started_at").all(),
+      linksForFinding: (fp) => db.prepare("SELECT * FROM run_findings WHERE fingerprint=?").all(fp),
+      begin: () => db.exec("BEGIN"),
+      commit: () => db.exec("COMMIT")
+    };
+  } catch {
+    return null;
+  }
+}
+function jsonBackend() {
+  let data = { runs: [], findings: {}, links: [] };
+  try {
+    data = { runs: [], findings: {}, links: [], ...JSON.parse(fs6.readFileSync(INVENTORY_FILE, "utf8")) };
+  } catch {
+  }
+  const save = () => {
+    ensureDirs();
+    fs6.writeFileSync(INVENTORY_FILE, JSON.stringify(data, null, 2));
+  };
+  let dirty = false;
+  return {
+    engine: "json",
+    upsertFinding: (r) => {
+      data.findings[r.fingerprint] = r;
+      dirty = true;
+    },
+    insertRun: (r) => {
+      data.runs = data.runs.filter((x) => x.id !== r.id).concat(r);
+      dirty = true;
+    },
+    linkRunFinding: (l) => {
+      data.links = data.links.filter((x) => !(x.run_id === l.run_id && x.fingerprint === l.fingerprint)).concat(l);
+      dirty = true;
+    },
+    allFindings: () => Object.values(data.findings),
+    allRuns: () => data.runs.slice().sort((a, b) => a.started_at.localeCompare(b.started_at)),
+    linksForFinding: (fp) => data.links.filter((l) => l.fingerprint === fp),
+    begin: () => {
+    },
+    commit: () => {
+      if (dirty) save();
+      dirty = false;
+    }
+  };
+}
+var _backend = null;
+function backend() {
+  if (!_backend) _backend = sqliteBackend() ?? jsonBackend();
+  return _backend;
+}
+function assetOf(f, meta3) {
+  const l = f.location ?? {};
+  if (l.target) return l.target;
+  if (l.url) {
+    try {
+      return new URL(l.url).host;
+    } catch {
+      return l.url;
+    }
+  }
+  return meta3.target;
+}
+function recordRun(meta3, findings) {
+  const b = backend();
+  const when = meta3.finishedAt ?? (/* @__PURE__ */ new Date()).toISOString();
+  const existing = new Map(b.allFindings().map((r) => [r.fingerprint, r]));
+  b.begin();
+  try {
+    b.insertRun({
+      id: meta3.id,
+      kind: meta3.kind,
+      target: meta3.target,
+      started_at: meta3.startedAt,
+      finished_at: when,
+      total: findings.length
+    });
+    for (const f of findings) {
+      const status = f.triage?.status ?? "open";
+      const prev = existing.get(f.fingerprint);
+      const tools = /* @__PURE__ */ new Set([...prev?.tool_used?.split(",").filter(Boolean) ?? [], ...f.tools]);
+      b.upsertFinding({
+        fingerprint: f.fingerprint,
+        asset: assetOf(f, meta3),
+        category: f.category,
+        severity: f.severity,
+        rule_id: f.ruleId,
+        title: f.title,
+        pkg_name: f.package?.name ?? null,
+        pkg_version: f.package?.version ?? null,
+        fixed_version: f.package?.fixedVersion ?? null,
+        cve: (f.cve ?? []).join(",") || null,
+        tool_used: [...tools].join(","),
+        status,
+        first_seen: prev?.first_seen ?? when,
+        last_seen: when,
+        first_run: prev?.first_run ?? meta3.id,
+        last_run: meta3.id,
+        runs: (prev?.runs ?? 0) + 1
+      });
+      b.linkRunFinding({ run_id: meta3.id, fingerprint: f.fingerprint, severity: f.severity, status });
+    }
+    b.commit();
+  } catch (e) {
+    b.commit();
+    throw e;
+  }
+}
+var SEV_ORDER = ["critical", "high", "medium", "low", "info"];
+var SUPPRESSED = /* @__PURE__ */ new Set(["false_positive", "accepted_risk", "fixed"]);
+function latestRunId(b) {
+  return b.allRuns().slice(-1)[0]?.id;
+}
+function queryFindings(opt = {}) {
+  const b = backend();
+  const latest = latestRunId(b);
+  let rows = b.allFindings();
+  if (opt.severity) rows = rows.filter((r) => r.severity === opt.severity);
+  if (opt.category) rows = rows.filter((r) => r.category === opt.category);
+  if (opt.status) rows = rows.filter((r) => r.status === opt.status);
+  if (opt.asset) rows = rows.filter((r) => r.asset.includes(opt.asset));
+  if (!opt.includeSuppressed) rows = rows.filter((r) => !SUPPRESSED.has(r.status));
+  if (opt.seen === "latest") rows = rows.filter((r) => r.last_run === latest);
+  if (opt.seen === "new") rows = rows.filter((r) => r.first_run === latest);
+  if (opt.seen === "gone") rows = rows.filter((r) => r.last_run !== latest);
+  rows.sort((a, b2) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b2.severity) || b2.last_seen.localeCompare(a.last_seen));
+  return opt.limit ? rows.slice(0, opt.limit) : rows;
+}
+function listAssets() {
+  const map2 = /* @__PURE__ */ new Map();
+  for (const r of queryFindings({ includeSuppressed: false })) {
+    let a = map2.get(r.asset);
+    if (!a) {
+      a = { asset: r.asset, categories: [], total: 0, bySeverity: {}, firstSeen: r.first_seen, lastSeen: r.last_seen };
+      map2.set(r.asset, a);
+    }
+    a.total++;
+    a.bySeverity[r.severity] = (a.bySeverity[r.severity] ?? 0) + 1;
+    if (!a.categories.includes(r.category)) a.categories.push(r.category);
+    if (r.first_seen < a.firstSeen) a.firstSeen = r.first_seen;
+    if (r.last_seen > a.lastSeen) a.lastSeen = r.last_seen;
+  }
+  return [...map2.values()].sort((a, b) => b.total - a.total);
+}
+function findingHistory(fingerprint) {
+  const b = backend();
+  const finding = b.allFindings().find((r) => r.fingerprint === fingerprint);
+  const runs = new Map(b.allRuns().map((r) => [r.id, r]));
+  const timeline = b.linksForFinding(fingerprint).map((l) => ({ ...l, kind: runs.get(l.run_id)?.kind ?? "?", at: runs.get(l.run_id)?.finished_at ?? "" })).sort((a, b2) => a.at.localeCompare(b2.at));
+  return { finding, timeline };
+}
+function inventorySummary() {
+  const b = backend();
+  const all = b.allFindings();
+  const active = all.filter((r) => !SUPPRESSED.has(r.status));
+  const bySeverity = {};
+  const byCategory = {};
+  for (const r of active) {
+    bySeverity[r.severity] = (bySeverity[r.severity] ?? 0) + 1;
+    byCategory[r.category] = (byCategory[r.category] ?? 0) + 1;
+  }
+  const last = b.allRuns().slice(-1)[0];
+  return {
+    engine: b.engine,
+    runs: b.allRuns().length,
+    assets: new Set(active.map((r) => r.asset)).size,
+    findingsActive: active.length,
+    findingsTotal: all.length,
+    bySeverity,
+    byCategory,
+    lastRun: last ? { id: last.id, kind: last.kind, target: last.target, at: last.finished_at } : void 0
+  };
+}
+
+// src/store.ts
 var slug = (s) => s.replace(/^[a-z]+:\/\//i, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(-40).toLowerCase() || "objetivo";
 function newRun(kind, target, options) {
   ensureDirs();
@@ -37213,12 +37437,12 @@ function newRun(kind, target, options) {
   const stamp = now.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
   const id = `${stamp}-${kind}-${slug(target)}`;
   const dir = path6.join(RUNS_DIR, id);
-  fs6.mkdirSync(dir, { recursive: true });
+  fs7.mkdirSync(dir, { recursive: true });
   return { meta: { id, kind, target, startedAt: now.toISOString(), tools: [], options }, dir };
 }
 var runDir = (id) => path6.join(RUNS_DIR, id);
-var SUPPRESSED = ["false_positive", "accepted_risk", "fixed"];
-var isSuppressed = (f) => !!f.triage && SUPPRESSED.includes(f.triage.status);
+var SUPPRESSED2 = ["false_positive", "accepted_risk", "fixed"];
+var isSuppressed = (f) => !!f.triage && SUPPRESSED2.includes(f.triage.status);
 function summarize(findings) {
   const bySeverity = Object.fromEntries(SEVERITIES.map((s) => [s, 0]));
   const byCategory = Object.fromEntries(CATEGORIES.map((c) => [c, 0]));
@@ -37238,27 +37462,31 @@ function saveRun(meta3, findings) {
   applyTriage(meta3, findings);
   meta3.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
   meta3.summary = summarize(findings);
-  fs6.writeFileSync(path6.join(dir, "findings.json"), JSON.stringify(findings, null, 2));
-  fs6.writeFileSync(path6.join(dir, "meta.json"), JSON.stringify(meta3, null, 2));
+  fs7.writeFileSync(path6.join(dir, "findings.json"), JSON.stringify(findings, null, 2));
+  fs7.writeFileSync(path6.join(dir, "meta.json"), JSON.stringify(meta3, null, 2));
+  try {
+    recordRun(meta3, findings);
+  } catch {
+  }
 }
 function listRuns(limit = 20) {
   ensureDirs();
-  return fs6.readdirSync(RUNS_DIR).filter((d) => fs6.existsSync(path6.join(RUNS_DIR, d, "meta.json"))).sort().reverse().slice(0, limit).map((d) => JSON.parse(fs6.readFileSync(path6.join(RUNS_DIR, d, "meta.json"), "utf8")));
+  return fs7.readdirSync(RUNS_DIR).filter((d) => fs7.existsSync(path6.join(RUNS_DIR, d, "meta.json"))).sort().reverse().slice(0, limit).map((d) => JSON.parse(fs7.readFileSync(path6.join(RUNS_DIR, d, "meta.json"), "utf8")));
 }
 function loadRun(id) {
   const runId = id && id !== "latest" ? id : listRuns(1)[0]?.id;
   if (!runId) throw new Error("No hay corridas todav\xEDa. Lanza primero un escaneo (scan_static, scan_dast\u2026).");
   const dir = runDir(path6.basename(runId));
-  if (!fs6.existsSync(path6.join(dir, "meta.json"))) throw new Error(`No existe la corrida ${runId}. Usa runs_list.`);
-  const meta3 = JSON.parse(fs6.readFileSync(path6.join(dir, "meta.json"), "utf8"));
-  const findings = JSON.parse(fs6.readFileSync(path6.join(dir, "findings.json"), "utf8"));
+  if (!fs7.existsSync(path6.join(dir, "meta.json"))) throw new Error(`No existe la corrida ${runId}. Usa runs_list.`);
+  const meta3 = JSON.parse(fs7.readFileSync(path6.join(dir, "meta.json"), "utf8"));
+  const findings = JSON.parse(fs7.readFileSync(path6.join(dir, "findings.json"), "utf8"));
   applyTriage(meta3, findings);
   meta3.summary = summarize(findings);
   return { meta: meta3, findings };
 }
 function loadTriage() {
   try {
-    return JSON.parse(fs6.readFileSync(TRIAGE_FILE, "utf8"));
+    return JSON.parse(fs7.readFileSync(TRIAGE_FILE, "utf8"));
   } catch {
     return {};
   }
@@ -37286,7 +37514,7 @@ function setTriage(findings, status, note) {
     if (status === "open") delete db[f.fingerprint];
     else db[f.fingerprint] = { status, note, at, title: f.title };
   }
-  fs6.writeFileSync(TRIAGE_FILE, JSON.stringify(db, null, 2));
+  fs7.writeFileSync(TRIAGE_FILE, JSON.stringify(db, null, 2));
 }
 
 // src/report.ts
@@ -37428,11 +37656,11 @@ function toSarif(meta3, findings) {
 }
 
 // src/scanners.ts
-import fs8 from "node:fs";
+import fs9 from "node:fs";
 import path8 from "node:path";
 
 // src/host.ts
-import fs7 from "node:fs";
+import fs8 from "node:fs";
 import path7 from "node:path";
 function parseCollected(text2) {
   const out = /* @__PURE__ */ new Map();
@@ -37732,9 +37960,9 @@ function checksToFindings(checks, info) {
   }));
 }
 function writeArtifacts(dir, text2, sbom) {
-  fs7.writeFileSync(path7.join(dir, "host-collect.txt"), text2);
+  fs8.writeFileSync(path7.join(dir, "host-collect.txt"), text2);
   const file2 = path7.join(dir, "host.cdx.json");
-  fs7.writeFileSync(file2, JSON.stringify(sbom));
+  fs8.writeFileSync(file2, JSON.stringify(sbom));
   return file2;
 }
 
@@ -38329,7 +38557,7 @@ function parseNuclei(jsonl, secrets = []) {
 // src/scanners.ts
 var exe = (t, args, opts) => run(t.cmd, [...t.prefix, ...args], opts);
 function readJson(file2) {
-  return JSON.parse(fs8.readFileSync(file2, "utf8"));
+  return JSON.parse(fs9.readFileSync(file2, "utf8"));
 }
 async function guarded(id, body) {
   const tool = resolveTool(id);
@@ -38350,7 +38578,7 @@ async function guarded(id, body) {
 }
 function needOutput(file2, r, what) {
   if (r.timedOut) throw new Error(`${what} super\xF3 el tiempo l\xEDmite`);
-  if (!fs8.existsSync(file2) || fs8.statSync(file2).size === 0) {
+  if (!fs9.existsSync(file2) || fs9.statSync(file2).size === 0) {
     throw new Error(`${what} no produjo resultados (c\xF3digo ${r.code}): ${tail(r)}`);
   }
 }
@@ -38361,7 +38589,7 @@ function hasFiles(root, exts, excludes, budget = 3e4) {
     const dir = stack.pop();
     let entries;
     try {
-      entries = fs8.readdirSync(dir, { withFileTypes: true });
+      entries = fs9.readdirSync(dir, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -38392,7 +38620,7 @@ function scanSemgrep(ctx, configs) {
     ];
     const opts = { cwd: ctx.root, timeoutMs: ctx.timeoutMs, env: { PYTHONUTF8: "1" } };
     let r = await exe(t, args, opts);
-    if (!r.timedOut && (!fs8.existsSync(out) || fs8.statSync(out).size === 0)) {
+    if (!r.timedOut && (!fs9.existsSync(out) || fs9.statSync(out).size === 0)) {
       r = await exe(t, args.filter((a) => a !== "--quiet"), opts);
     }
     needOutput(out, r, "semgrep");
@@ -38439,7 +38667,7 @@ function scanCodeql(ctx, opts) {
       timeoutMs: ctx.timeoutMs
     });
     needOutput(out, r2, "codeql analyze");
-    if (!opts.keepDb) fs8.rmSync(db, { recursive: true, force: true });
+    if (!opts.keepDb) fs9.rmSync(db, { recursive: true, force: true });
     return { findings: parseSarif(readJson(out), ctx.root, "codeql"), message: `lenguaje ${lang}, suite ${suite}` };
   });
 }
@@ -38493,13 +38721,13 @@ function scanTrivyImage(dir, image, scanners, timeoutMs) {
 }
 function scanGitleaks(ctx, mode) {
   return guarded("gitleaks", async (t) => {
-    const useGit = mode === "git" || mode === "auto" && fs8.existsSync(path8.join(ctx.root, ".git"));
+    const useGit = mode === "git" || mode === "auto" && fs9.existsSync(path8.join(ctx.root, ".git"));
     const out = path8.join(ctx.dir, "gitleaks.json");
     const args = [useGit ? "git" : "dir", ctx.root, "--report-format", "json", "--report-path", out, "--redact", "--no-banner", "--exit-code", "0", "--log-level", "error"];
-    if (!useGit && !fs8.existsSync(path8.join(ctx.root, ".gitleaks.toml"))) {
+    if (!useGit && !fs9.existsSync(path8.join(ctx.root, ".gitleaks.toml"))) {
       const cfg = path8.join(ctx.dir, "gitleaks.toml");
       const paths = ctx.excludes.map((e) => `  '''(^|[\\\\/])${e.replace(/\./g, "\\.")}([\\\\/]|$)''',`).join("\n");
-      fs8.writeFileSync(cfg, `[extend]
+      fs9.writeFileSync(cfg, `[extend]
 useDefault = true
 
 [[allowlists]]
@@ -38521,7 +38749,7 @@ function scanNuclei(dir, o) {
   return guarded("nuclei", async (t) => {
     const out = path8.join(dir, "nuclei.jsonl");
     const list = path8.join(dir, "targets.txt");
-    fs8.writeFileSync(list, o.targets.join("\n"));
+    fs9.writeFileSync(list, o.targets.join("\n"));
     const args = ["-l", list, "-jsonl", "-o", out, "-silent", "-nc", "-duc", "-or", "-rl", String(o.rateLimit), "-c", String(o.concurrency), "-timeout", "10", "-retries", "1"];
     if (o.profile === "baseline") args.push("-tags", BASELINE_TAGS.join(","));
     if (o.profile === "automatic") args.push("-as");
@@ -38533,16 +38761,16 @@ function scanNuclei(dir, o) {
     for (const h of o.headers ?? []) args.push("-H", h);
     const r = await exe(t, args, { timeoutMs: o.timeoutMs });
     if (r.timedOut) throw new Error("nuclei super\xF3 el tiempo l\xEDmite (los resultados parciales quedan en nuclei.jsonl)");
-    if (!fs8.existsSync(out)) {
+    if (!fs9.existsSync(out)) {
       if (r.code === 0) return { findings: [], message: "sin coincidencias" };
       throw new Error(`nuclei fall\xF3 (c\xF3digo ${r.code}): ${tail(r)}`);
     }
     const secretValues = (o.headers ?? []).map((h) => h.split(":").slice(1).join(":").trim());
-    const findings = parseNuclei(fs8.readFileSync(out, "utf8"), secretValues);
+    const findings = parseNuclei(fs9.readFileSync(out, "utf8"), secretValues);
     if (secretValues.length) {
-      let raw = fs8.readFileSync(out, "utf8");
+      let raw = fs9.readFileSync(out, "utf8");
       for (const s of secretValues) if (s.length >= 6) raw = raw.split(s).join("[REDACTADO]");
-      fs8.writeFileSync(out, raw);
+      fs9.writeFileSync(out, raw);
     }
     return { findings, message: `perfil ${o.profile}, ${o.targets.length} objetivo(s), ${o.rateLimit} req/s` };
   });
@@ -38595,7 +38823,7 @@ async function scanHostText(dir, text2, ignoreUnfixed, timeoutMs) {
     findings: checksToFindings(checks, info)
   };
   if (!info.trivyType) {
-    fs8.writeFileSync(path8.join(dir, "host-collect.txt"), text2);
+    fs9.writeFileSync(path8.join(dir, "host-collect.txt"), text2);
     return { info, outcomes: [config2, { run: { tool: "trivy", status: "skipped", message: `distribuci\xF3n no soportada para vulnerabilidades (${info.osId})` }, findings: [] }] };
   }
   const sbomFile = writeArtifacts(dir, text2, buildSbom(sections, info));
@@ -38815,7 +39043,7 @@ echo ok
 `;
 
 // src/scope.ts
-import fs9 from "node:fs";
+import fs10 from "node:fs";
 import net2 from "node:net";
 var BUILTIN = ["localhost", "127.0.0.1", "::1"].map((value) => ({
   value,
@@ -38825,7 +39053,7 @@ var BUILTIN = ["localhost", "127.0.0.1", "::1"].map((value) => ({
 }));
 function loadScope() {
   try {
-    const data = JSON.parse(fs9.readFileSync(SCOPE_FILE, "utf8"));
+    const data = JSON.parse(fs10.readFileSync(SCOPE_FILE, "utf8"));
     return Array.isArray(data?.targets) ? data.targets : [];
   } catch {
     return [];
@@ -38833,7 +39061,7 @@ function loadScope() {
 }
 function saveScope(entries) {
   ensureDirs();
-  fs9.writeFileSync(SCOPE_FILE, JSON.stringify({ targets: entries }, null, 2));
+  fs10.writeFileSync(SCOPE_FILE, JSON.stringify({ targets: entries }, null, 2));
 }
 function normalizeEntry(value) {
   const v = value.trim().toLowerCase();
@@ -38932,7 +39160,7 @@ function progress(extra, done, total, message) {
 }
 function resolveDir(p) {
   const abs = path9.resolve(p);
-  if (!fs10.existsSync(abs) || !fs10.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
+  if (!fs11.existsSync(abs) || !fs11.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
   return abs;
 }
 function summaryText(meta3, findings, top = 15) {
@@ -39176,8 +39404,8 @@ server.registerTool(
   async ({ output_path }) => {
     ensureDirs();
     const file2 = path9.resolve(output_path ?? path9.join(HOME, "xolotl-collect.sh"));
-    fs10.mkdirSync(path9.dirname(file2), { recursive: true });
-    fs10.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+    fs11.mkdirSync(path9.dirname(file2), { recursive: true });
+    fs11.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
     return text(
       [
         `Script escrito en ${file2} (${collector_default.split("\n").length} l\xEDneas, solo lectura: no instala ni cambia nada y no copia secretos).`,
@@ -39223,8 +39451,8 @@ server.registerTool(
         via = `ssh ${a.target}`;
       } else {
         const file2 = path9.resolve(a.collected_file);
-        if (!fs10.existsSync(file2)) return fail(`No existe ${file2}`);
-        collected = fs10.readFileSync(file2, "utf8");
+        if (!fs11.existsSync(file2)) return fail(`No existe ${file2}`);
+        collected = fs11.readFileSync(file2, "utf8");
         via = file2;
       }
     } catch (e) {
@@ -39491,6 +39719,82 @@ server.registerTool(
   }
 );
 server.registerTool(
+  "inventory",
+  {
+    title: "Inventario acumulado",
+    description: "Consulta la memoria larga de Xolotl, que crece con cada corrida: resumen del ecosistema, activos vistos, hallazgos a trav\xE9s del tiempo (nuevos, persistentes, desaparecidos) y la historia de un hallazgo por su huella. Es la base para explorar sistemas y armar un inventario. No lanza escaneos.",
+    inputSchema: {
+      view: external_exports.enum(["summary", "assets", "findings", "history"]).default("summary").describe("summary: ecosistema; assets: activos; findings: hallazgos acumulados; history: un hallazgo en el tiempo"),
+      severity: external_exports.enum(SEVERITIES).optional(),
+      category: external_exports.array(external_exports.enum(CATEGORIES)).optional(),
+      asset: external_exports.string().optional().describe("Filtra por activo (host, URL o ruta); coincide por fragmento"),
+      status: external_exports.enum(TRIAGE_STATUSES).optional(),
+      seen: external_exports.enum(["all", "latest", "new", "gone"]).optional().describe("latest: vistos en la \xFAltima corrida; new: aparecieron en ella; gone: ya no aparecen"),
+      include_suppressed: external_exports.boolean().optional().describe("Incluir descartados (false_positive/accepted_risk/fixed)"),
+      fingerprint: external_exports.string().optional().describe("Huella del hallazgo para view=history"),
+      limit: external_exports.number().min(1).max(500).optional()
+    },
+    annotations: { readOnlyHint: true }
+  },
+  async (a) => {
+    try {
+      if (a.view === "summary") {
+        const s = inventorySummary();
+        if (!s.runs) return text("Inventario vac\xEDo. Lanza un escaneo (scan_static, scan_network, scan_host\u2026) y se ir\xE1 poblando solo.");
+        const sev = SEVERITIES.filter((x) => s.bySeverity[x]).map((x) => `${s.bySeverity[x]} ${x}`).join(" \xB7 ") || "sin hallazgos activos";
+        const cat = Object.entries(s.byCategory).sort((x, y) => y[1] - x[1]).map(([c, n]) => `${c}:${n}`).join(" ");
+        const last = s.lastRun ? `${s.lastRun.kind} \xB7 ${s.lastRun.target} (${s.lastRun.at.slice(0, 16).replace("T", " ")})` : "\u2014";
+        return text(
+          [
+            `Inventario de Xolotl \xB7 motor ${s.engine}`,
+            `Corridas: ${s.runs} \xB7 Activos: ${s.assets} \xB7 Hallazgos activos: ${s.findingsActive} (total hist\xF3rico ${s.findingsTotal})`,
+            `Severidad: ${sev}`,
+            `Categor\xEDas: ${cat}`,
+            `\xDAltima corrida: ${last}`
+          ].join("\n")
+        );
+      }
+      if (a.view === "assets") {
+        const rows2 = listAssets();
+        if (!rows2.length) return text("Sin activos todav\xEDa.");
+        return text(
+          rows2.map((r) => {
+            const sev = SEVERITIES.filter((x) => r.bySeverity[x]).map((x) => `${r.bySeverity[x]}${x[0].toUpperCase()}`).join(" ");
+            return `${r.asset} \xB7 ${r.total} hallazgos (${sev}) \xB7 ${r.categories.join(",")} \xB7 visto ${r.firstSeen.slice(0, 10)}\u2192${r.lastSeen.slice(0, 10)}`;
+          }).join("\n")
+        );
+      }
+      if (a.view === "history") {
+        if (!a.fingerprint) return fail("Indica la huella del hallazgo (fingerprint) para ver su historia.");
+        const { finding, timeline } = findingHistory(a.fingerprint);
+        if (!finding) return fail(`No hay ning\xFAn hallazgo con huella ${a.fingerprint} en el inventario.`);
+        const head = `${finding.severity} ${finding.category} \xB7 ${finding.title} \xB7 ${finding.asset} [${finding.tool_used}] {${finding.status}}`;
+        const lines = timeline.map((t) => `  ${t.at.slice(0, 16).replace("T", " ")} \xB7 ${t.kind} \xB7 ${t.severity} {${t.status}} \xB7 ${t.run_id}`);
+        return text([head, `Visto en ${timeline.length} corrida(s), desde ${finding.first_seen.slice(0, 10)}:`, ...lines].join("\n"));
+      }
+      const rows = queryFindings({
+        severity: a.severity,
+        category: a.category?.[0],
+        asset: a.asset,
+        status: a.status,
+        seen: a.seen,
+        includeSuppressed: a.include_suppressed,
+        limit: a.limit ?? 100
+      });
+      if (!rows.length) return text("Ning\xFAn hallazgo coincide en el inventario.");
+      const out = rows.map((r) => {
+        const pkg = r.pkg_name ? ` ${r.pkg_name}@${r.pkg_version ?? "?"}` : "";
+        const cve = r.cve ? ` ${r.cve}` : "";
+        const n = r.runs > 1 ? ` \xD7${r.runs}` : "";
+        return `${r.severity} ${r.category}${pkg} \u2014 ${r.title}${cve} \xB7 ${r.asset} [${r.tool_used}] {${r.status}}${n} \xB7 ${r.fingerprint}`;
+      });
+      return text([`${rows.length} hallazgo(s) en el inventario:`, ...out].join("\n"));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
   "report_generate",
   {
     title: "Generar informe",
@@ -39509,8 +39813,8 @@ server.registerTool(
       const incl = a.include_suppressed ?? true;
       const body = fmt === "md" ? toMarkdown(meta3, findings, incl) : fmt === "html" ? toHtml(meta3, findings, incl) : JSON.stringify(fmt === "sarif" ? toSarif(meta3, findings) : { meta: meta3, findings }, null, 2);
       const file2 = path9.resolve(a.output_path ?? path9.join(runDir(meta3.id), `informe.${fmt}`));
-      fs10.mkdirSync(path9.dirname(file2), { recursive: true });
-      fs10.writeFileSync(file2, body);
+      fs11.mkdirSync(path9.dirname(file2), { recursive: true });
+      fs11.writeFileSync(file2, body);
       return text(`Informe ${fmt.toUpperCase()} escrito en ${file2} (${meta3.summary.total} hallazgos activos).`);
     } catch (e) {
       return fail(e.message);

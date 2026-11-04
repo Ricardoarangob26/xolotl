@@ -48,6 +48,7 @@ No es un nivel de acceso: es lo que el agente hace con los hallazgos de cualquie
 | Capacidad | Tool / skill | Estado |
 |---|---|---|
 | Triage con memoria | `finding_triage`, skill `appsec-triage` | ✅ |
+| Inventario acumulado (ecosistema) | `inventory` (SQLite local) | ✅ |
 | Comparar corridas | `runs_diff` | ✅ |
 | Remediación guiada | prompt `fix_finding`, skill `appsec-fix` | ✅ |
 | Informe | `report_generate` (MD/HTML/SARIF/JSON) | ✅ |

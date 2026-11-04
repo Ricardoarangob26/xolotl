@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ensureDirs, RUNS_DIR, TRIAGE_FILE } from "./config.js";
 import { CATEGORIES, Finding, SEVERITIES, TriageStatus } from "./findings.js";
+import { recordRun } from "./inventory.js";
 
 export interface ToolRun {
   tool: string;
@@ -75,6 +76,12 @@ export function saveRun(meta: RunMeta, findings: Finding[]): void {
   meta.summary = summarize(findings);
   fs.writeFileSync(path.join(dir, "findings.json"), JSON.stringify(findings, null, 2));
   fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify(meta, null, 2));
+  // Alimenta el inventario persistente; un fallo aquí no debe perder la corrida ya escrita.
+  try {
+    recordRun(meta, findings);
+  } catch {
+    /* el inventario es acumulativo, no crítico para la corrida */
+  }
 }
 
 export function listRuns(limit = 20): RunMeta[] {

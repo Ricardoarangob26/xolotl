@@ -143,6 +143,7 @@ Luego, en el chat:
 | `dast_scope` | Alcance autorizado para DAST: quién autorizó y con qué evidencia |
 | `scan_dast` | Nuclei por perfiles (`baseline`, `automatic`, `full`, `custom`); rechaza objetivos fuera de alcance |
 | `runs_list` · `findings_query` · `finding_get` | Navegar corridas y hallazgos, con el código alrededor de la línea |
+| `inventory` | Memoria larga que crece con cada corrida: resumen del ecosistema, activos, hallazgos en el tiempo (nuevos/persistentes/desaparecidos) y la historia de un hallazgo. SQLite local (o JSON si el runtime no trae `node:sqlite`) |
 | `finding_triage` | `confirmed` / `false_positive` / `accepted_risk` / `fixed`, con nota; se recuerda entre corridas |
 | `runs_diff` | Resueltos, nuevos y persistentes entre dos corridas |
 | `report_generate` | Informe Markdown, HTML, SARIF o JSON |
