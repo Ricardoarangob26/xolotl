@@ -22,7 +22,7 @@ Ninguna capacidad nueva introduce un servicio externo obligatorio.
 
 ---
 
-## Fase 1 — Memoria y catálogo (en curso)
+## Fase 1 — Memoria y catálogo ✅ (completada)
 
 Lo que destiló la revisión de [`pentest-ai-agents`](https://github.com/0xSteph/pentest-ai-agents):
 tomar su estética y su modelo, no su dependencia de la nube.
@@ -32,7 +32,7 @@ tomar su estética y su modelo, no su dependencia de la nube.
 | **BD local SQLite** | ✅ | Hallazgos, corridas y enlaces en `~/.xolotl/xolotl.db` con huella estable, columna `tool_used` e índices. Motor `node:sqlite` nativo (Node 22.5+) con respaldo JSON. | Su `findings.sh` + esquema |
 | **Inventario / ecosistema** | ✅ | Tool `inventory`: resumen del ecosistema, activos, hallazgos en el tiempo (nuevos/persistentes/desaparecidos) e historia por huella. Crece solo con cada corrida. | Tu petición original |
 | **Niveles de ejecución (Tier 1 / Tier 2)** | ✅ | Parámetro `mode` en `scan_network`/`scan_dast`/`scan_host` y variable `XOLOTL_MODE`. *advisory* (Tier 1): no se conecta, entrega el comando exacto para correr a mano (tu flujo de MobaXterm). *execute* (Tier 2): escanea validando el alcance. | Su modelo de dos niveles |
-| **Catálogo de skills por dominio** | 🧭 | Las skills ordenadas por nivel de acceso al objetivo, navegables en markdown. Base en [`docs/catalogo/`](docs/catalogo/README.md). | Su catálogo de agentes `.md` |
+| **Catálogo de skills por dominio** | ✅ | Siete skills por dominio con nivel de acceso y de ejecución, navegables en [`docs/catalogo/`](docs/catalogo/README.md). Nuevas: `appsec-network` (red sin credenciales) y `appsec-inventory` (ecosistema). | Su catálogo de agentes `.md` |
 
 ## Fase 2 — Más superficie de sistema
 

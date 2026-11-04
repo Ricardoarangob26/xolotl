@@ -4,6 +4,8 @@ Lo que se ve con una **cuenta sin privilegios**, un **rol de solo lectura** o la
 **recolector ejecutado sin `sudo`**. Salta el muro de la caja negra: ya se lee el sistema por
 dentro, pero no todo.
 
+> **Skill:** `appsec-hosts` (recolector sin `sudo`).
+
 > Este es el nivel natural de tu flujo de MobaXterm cuando `operacion` no tiene `sudo`: el
 > recolector corre en modo lectura y tú pegas la salida.
 

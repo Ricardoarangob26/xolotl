@@ -3,6 +3,8 @@
 Un eje aparte: aquí no se accede a un sistema en ejecución, sino al **repositorio**. Es la
 caja blanca del código. No necesita credenciales del objetivo, sino el código mismo.
 
+> **Skills:** `appsec-audit` (escaneo), `appsec-triage` (clasificar), `appsec-fix` (remediar), `appsec-inventory` (ecosistema).
+
 ---
 
 ## analisis-estatico

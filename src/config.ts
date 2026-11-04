@@ -4,7 +4,8 @@ import path from "node:path";
 
 /** Carpeta de trabajo: binarios gestionados, corridas, alcance DAST y triage. */
 export const HOME = process.env.XOLOTL_HOME ?? path.join(os.homedir(), ".xolotl");
-export const TOOLS_DIR = path.join(HOME, "tools");
+/** Los binarios pueden compartirse entre HOMEs (p. ej. el autotest aísla datos, no binarios). */
+export const TOOLS_DIR = process.env.XOLOTL_TOOLS ?? path.join(HOME, "tools");
 export const RUNS_DIR = path.join(HOME, "runs");
 export const SCOPE_FILE = path.join(HOME, "scope.json");
 export const TRIAGE_FILE = path.join(HOME, "triage.json");

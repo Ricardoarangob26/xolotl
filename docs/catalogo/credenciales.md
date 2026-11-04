@@ -4,6 +4,8 @@ Lo que se ve con **root/sudo**, **admin de Windows**, acceso al **disco** o al *
 control**. Es la visión completa del sistema: endurecimiento, superficie oculta y CVE con
 certeza de parche.
 
+> **Skill:** `appsec-hosts` (SSH con llave o recolector con `sudo`).
+
 ---
 
 ## servidor-linux-completo

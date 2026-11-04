@@ -22,6 +22,21 @@ compromiso de pentest. Se elige con el parámetro `mode` de la herramienta o con
 Aplica a `scan_network`, `scan_dast` y `scan_host` (por SSH). El análisis de código fuente
 corre siempre en local, así que no distingue niveles.
 
+## Skills por dominio
+
+Cada skill de Claude Code guía un dominio y declara su nivel de acceso y de ejecución. Se
+activan solas cuando pides algo de su área, o puedes invocarlas por nombre.
+
+| Skill | Dominio | Nivel de acceso | Ejecución |
+|---|---|---|---|
+| `appsec-network` | Reconocimiento de red (puertos, TLS, servicios) | 🌑 sin acceso | Tier 1 / Tier 2 |
+| `appsec-dast` | Prueba dinámica de apps/APIs (Nuclei) | 🌑 sin acceso | Tier 1 / Tier 2 |
+| `appsec-audit` | Auditoría de código: SAST, SCA, secretos, IaC | 📄 código fuente | local |
+| `appsec-hosts` | Servidores Linux: CVE de paquetes y endurecimiento | 🌓 lectura / 🌕 credenciales | Tier 1 / Tier 2 |
+| `appsec-triage` | Clasificar hallazgos con memoria entre corridas | transversal | — |
+| `appsec-fix` | Remediación guiada y verificación por diferencia | transversal | — |
+| `appsec-inventory` | Explorar sistemas y armar el ecosistema (tool `inventory`) | transversal | — |
+
 ## Leyenda de estado
 
 `✅ disponible` · `🧭 en la hoja de ruta` — ver [ROADMAP.md](../../ROADMAP.md).

@@ -149,7 +149,7 @@ Luego, en el chat:
 | `report_generate` | Informe Markdown, HTML, SARIF o JSON |
 
 **Prompts MCP:** `triage_run`, `fix_finding`, `review_patch`.
-**Skills:** `appsec-audit`, `appsec-triage`, `appsec-dast`, `appsec-fix`, `appsec-hosts`.
+**Skills:** `appsec-audit`, `appsec-network`, `appsec-dast`, `appsec-hosts`, `appsec-triage`, `appsec-fix`, `appsec-inventory`. Catálogo por nivel de acceso: [`docs/catalogo/`](docs/catalogo/README.md).
 
 ## Modelo de seguridad de la propia herramienta
 

@@ -4,6 +4,8 @@ Lo que se ve de un objetivo **desde fuera**, sin ninguna credencial. Requiere so
 objetivo esté registrado en el alcance autorizado (`dast_scope`), con quién lo autorizó y
 con qué evidencia. Es la caja negra.
 
+> **Skills:** `appsec-network` (puertos/TLS), `appsec-dast` (apps/APIs).
+
 > ⚠️ Nada aquí corre contra un objetivo que no esté en el alcance. El servidor rechaza
 > comodines de TLD, `*` y rangos mayores a `/16`.
 

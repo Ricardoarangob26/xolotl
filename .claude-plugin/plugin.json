@@ -1,7 +1,7 @@
 {
   "name": "xolotl",
   "version": "0.1.0",
-  "description": "Pruebas de seguridad de aplicativos: SAST (Semgrep, Bandit, CodeQL), SCA (OSV-Scanner, Trivy), secretos (Gitleaks, Trivy), contenedores e IaC (Trivy), servidores Linux (Trivy + endurecimiento) y DAST (Nuclei) unificados en un MCP, con skills de auditoría, triage, servidores, DAST autorizado y remediación verificada.",
+  "description": "Pruebas de seguridad de aplicativos: SAST (Semgrep, Bandit, CodeQL), SCA (OSV-Scanner, Trivy), secretos (Gitleaks, Trivy), contenedores e IaC (Trivy), servidores Linux (Trivy + endurecimiento), red y TLS sin credenciales y DAST (Nuclei) unificados en un MCP, con inventario persistente, niveles de ejecución Tier 1/Tier 2 y skills de auditoría, red, servidores, DAST autorizado, triage, remediación verificada e inventario.",
   "author": {
     "name": "Ricardo Andres Arango Buelvas"
   },

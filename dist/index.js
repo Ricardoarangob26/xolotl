@@ -36665,7 +36665,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 var HOME = process.env.XOLOTL_HOME ?? path.join(os.homedir(), ".xolotl");
-var TOOLS_DIR = path.join(HOME, "tools");
+var TOOLS_DIR = process.env.XOLOTL_TOOLS ?? path.join(HOME, "tools");
 var RUNS_DIR = path.join(HOME, "runs");
 var SCOPE_FILE = path.join(HOME, "scope.json");
 var TRIAGE_FILE = path.join(HOME, "triage.json");

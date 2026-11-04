@@ -70,9 +70,14 @@ app.listen(3000);
 };
 for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(fixture, name), body);
 
+// HOME aislado para datos (inventario, corridas, alcance), reutilizando los binarios ya
+// instalados: el autotest no debe ensuciar el inventario ni las corridas reales del usuario.
+const sandboxHome = path.join(fixture, ".xolotl-home");
+const realTools = path.join(os.homedir(), ".xolotl", "tools");
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [path.join(here, "..", "dist", "index.js")],
+  env: { ...process.env, XOLOTL_HOME: sandboxHome, XOLOTL_TOOLS: process.env.XOLOTL_TOOLS ?? realTools },
   stderr: "inherit",
 });
 const client = new Client({ name: "selftest", version: "0.0.0" });
