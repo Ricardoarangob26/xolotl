@@ -3259,8 +3259,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path11) {
-      let input2 = path11;
+    function removeDotSegments(path12) {
+      let input2 = path12;
       const output2 = [];
       let nextSlash = -1;
       let len = 0;
@@ -3334,11 +3334,11 @@ var require_utils = __commonJS({
       }
       return output2.join("");
     }
-    function removeDotSegmentsRelative(path11) {
-      if (path11 === "" || path11[0] === "/") {
-        return removeDotSegments(path11);
+    function removeDotSegmentsRelative(path12) {
+      if (path12 === "" || path12[0] === "/") {
+        return removeDotSegments(path12);
       }
-      const segments = path11.split("/");
+      const segments = path12.split("/");
       const last = segments.length - 1;
       const output2 = [];
       let trailingDirectory = false;
@@ -3701,8 +3701,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path11 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path11 && path11 !== "/" ? path11 : void 0;
+        const path12 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path12 && path12 !== "/" ? path12 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7239,12 +7239,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs14, exportName) {
+    function addFormats(ajv, list, fs15, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs14[f]);
+        ajv.addFormat(f, fs15[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7253,8 +7253,8 @@ var require_dist = __commonJS({
 });
 
 // src/index.ts
-import fs13 from "node:fs";
-import path10 from "node:path";
+import fs14 from "node:fs";
+import path11 from "node:path";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -7630,8 +7630,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path11, errorMaps, issueData } = params;
-  const fullPath = [...path11, ...issueData.path || []];
+  const { data, path: path12, errorMaps, issueData } = params;
+  const fullPath = [...path12, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7746,11 +7746,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path11, key) {
+  constructor(parent, value, path12, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path11;
+    this._path = path12;
     this._key = key;
   }
   get path() {
@@ -11706,10 +11706,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path11) {
-  if (!path11)
+function getElementAtPath(obj, path12) {
+  if (!path12)
     return obj;
-  return path11.reduce((acc, key) => acc?.[key], obj);
+  return path12.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -12049,11 +12049,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path11, issues) {
+function prefixIssues(path12, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path11);
+    iss.path.unshift(path12);
     return iss;
   });
 }
@@ -12515,16 +12515,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path11 = []) => {
+  const processError = (error63, path12 = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path11, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path12, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
       } else {
-        const fullpath = [...path11, ...issue2.path];
+        const fullpath = [...path12, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -12563,17 +12563,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path11 = []) => {
+  const processError = (error63, path12 = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path11, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path12, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
       } else {
-        const fullpath = [...path11, ...issue2.path];
+        const fullpath = [...path12, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -12612,8 +12612,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path11 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path11) {
+  const path12 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path12) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -28164,11 +28164,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path11) {
-  if (path11.length === 0) {
+function getDotPath(path12) {
+  if (path12.length === 0) {
     return "object root";
   }
-  return path11.reduce((acc, seg, index) => {
+  return path12.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -30395,13 +30395,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path11 = ref.slice(1).split("/").filter(Boolean);
-  if (path11.length === 0) {
+  const path12 = ref.slice(1).split("/").filter(Boolean);
+  if (path12.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path11[0] === defsKey) {
-    const key = path11[1] === void 0 ? void 0 : decodeJSONPointerSegment(path11[1]);
+  if (path12[0] === defsKey) {
+    const key = path12[1] === void 0 ? void 0 : decodeJSONPointerSegment(path12[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -37253,6 +37253,14 @@ function clearCriticality(asset) {
   saveAssets(db);
   return true;
 }
+function importAssets(incoming, replace) {
+  const db = replace ? {} : loadAssets();
+  for (const [k, v] of Object.entries(incoming ?? {})) {
+    if (v?.criticality) db[normKey(k)] = { criticality: v.criticality, note: v.note, at: v.at ?? (/* @__PURE__ */ new Date()).toISOString() };
+  }
+  saveAssets(db);
+  return Object.keys(db).length;
+}
 function criticalityOf(asset, db = loadAssets()) {
   const k = normKey(asset);
   if (db[k]) return db[k];
@@ -37308,6 +37316,7 @@ function sqliteBackend() {
       linkRunFinding: (l) => insLink.run(l.run_id, l.fingerprint, l.severity, l.status),
       allFindings: () => db.prepare("SELECT * FROM findings").all(),
       allRuns: () => db.prepare("SELECT * FROM runs ORDER BY started_at").all(),
+      allLinks: () => db.prepare("SELECT * FROM run_findings").all(),
       linksForFinding: (fp) => db.prepare("SELECT * FROM run_findings WHERE fingerprint=?").all(fp),
       begin: () => db.exec("BEGIN"),
       commit: () => db.exec("COMMIT")
@@ -37343,6 +37352,7 @@ function jsonBackend() {
     },
     allFindings: () => Object.values(data.findings),
     allRuns: () => data.runs.slice().sort((a, b) => a.started_at.localeCompare(b.started_at)),
+    allLinks: () => data.links.slice(),
     linksForFinding: (fp) => data.links.filter((l) => l.fingerprint === fp),
     begin: () => {
     },
@@ -37413,6 +37423,24 @@ function recordRun(meta3, findings) {
     b.commit();
     throw e;
   }
+}
+function exportInventory() {
+  const b = backend();
+  return { runs: b.allRuns(), findings: b.allFindings(), links: b.allLinks() };
+}
+function importInventory(data) {
+  const b = backend();
+  b.begin();
+  try {
+    for (const r of data.runs ?? []) b.insertRun(r);
+    for (const f of data.findings ?? []) b.upsertFinding(f);
+    for (const l of data.links ?? []) b.linkRunFinding(l);
+    b.commit();
+  } catch (e) {
+    b.commit();
+    throw e;
+  }
+  return { runs: data.runs?.length ?? 0, findings: data.findings?.length ?? 0, links: data.links?.length ?? 0 };
 }
 var SEV_ORDER = ["critical", "high", "medium", "low", "info"];
 var SUPPRESSED = /* @__PURE__ */ new Set(["false_positive", "accepted_risk", "fixed"]);
@@ -37558,6 +37586,20 @@ function applyTriage(meta3, findings) {
       f.triage = { status: t.status, note: t.note, at: t.at };
     }
   }
+}
+function exportTriage() {
+  return loadTriage();
+}
+function importTriage(incoming, replace) {
+  const db = replace ? {} : loadTriage();
+  for (const [fp, t] of Object.entries(incoming ?? {})) {
+    if (t?.status && TRIAGE_STATUSES.includes(t.status)) {
+      db[fp] = { status: t.status, note: t.note, at: t.at ?? (/* @__PURE__ */ new Date()).toISOString(), title: t.title ?? "" };
+    }
+  }
+  ensureDirs();
+  fs8.writeFileSync(TRIAGE_FILE, JSON.stringify(db, null, 2));
+  return Object.keys(db).length;
 }
 function setTriage(findings, status, note) {
   ensureDirs();
@@ -39260,6 +39302,21 @@ function addScope(value, authorizedBy, evidence) {
   saveScope(entries);
   return entry;
 }
+function importScope(entries, replace) {
+  const byVal = new Map((replace ? [] : loadScope()).map((e) => [e.value, e]));
+  for (const e of entries ?? []) {
+    if (!e?.value) continue;
+    byVal.set(e.value, {
+      value: e.value,
+      authorized_by: e.authorized_by ?? "importado",
+      evidence: e.evidence ?? "traspaso",
+      added_at: e.added_at ?? (/* @__PURE__ */ new Date()).toISOString()
+    });
+  }
+  const merged = [...byVal.values()];
+  saveScope(merged);
+  return merged.length;
+}
 function removeScope(value) {
   const v = normalizeEntry(value);
   const entries = loadScope();
@@ -39540,6 +39597,98 @@ async function refreshFeeds(which2 = "all") {
   return out;
 }
 
+// src/handoff.ts
+import fs13 from "node:fs";
+import path10 from "node:path";
+var HANDOFF_VERSION = "1";
+function readAllRuns() {
+  let dirs = [];
+  try {
+    dirs = fs13.readdirSync(RUNS_DIR);
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const id of dirs) {
+    const metaPath = path10.join(RUNS_DIR, id, "meta.json");
+    const findingsPath = path10.join(RUNS_DIR, id, "findings.json");
+    if (!fs13.existsSync(metaPath) || !fs13.existsSync(findingsPath)) continue;
+    try {
+      out.push({
+        id,
+        meta: JSON.parse(fs13.readFileSync(metaPath, "utf8")),
+        findings: JSON.parse(fs13.readFileSync(findingsPath, "utf8"))
+      });
+    } catch {
+    }
+  }
+  return out;
+}
+function buildHandoff(includeRuns) {
+  return {
+    xolotl_handoff: HANDOFF_VERSION,
+    exported_at: (/* @__PURE__ */ new Date()).toISOString(),
+    scope: loadScope(),
+    triage: exportTriage(),
+    assets: loadAssets(),
+    feeds: feedStatus(),
+    inventory: exportInventory(),
+    runs: includeRuns ? readAllRuns() : []
+  };
+}
+function writeHandoff(file2, includeRuns) {
+  ensureDirs();
+  const h = buildHandoff(includeRuns);
+  const json2 = JSON.stringify(h, null, 2);
+  fs13.mkdirSync(path10.dirname(path10.resolve(file2)), { recursive: true });
+  fs13.writeFileSync(file2, json2);
+  return {
+    file: path10.resolve(file2),
+    bytes: Buffer.byteLength(json2),
+    scope: h.scope.length,
+    triage: Object.keys(h.triage).length,
+    assets: Object.keys(h.assets).length,
+    findings: h.inventory.findings.length,
+    runs: h.runs.length
+  };
+}
+function readHandoff(file2, opts = {}) {
+  const raw = fs13.readFileSync(file2, "utf8");
+  let h;
+  try {
+    h = JSON.parse(raw);
+  } catch {
+    throw new Error("El archivo no es un JSON v\xE1lido.");
+  }
+  if (!h || h.xolotl_handoff == null) throw new Error("No parece un traspaso de Xolotl (falta xolotl_handoff).");
+  if (String(h.xolotl_handoff) !== HANDOFF_VERSION) throw new Error(`Versi\xF3n de traspaso ${h.xolotl_handoff} no soportada (esperada ${HANDOFF_VERSION}).`);
+  const replace = !!opts.replace;
+  const scope = importScope(h.scope ?? [], replace);
+  const triage = importTriage(h.triage ?? {}, replace);
+  const assets = importAssets(h.assets ?? {}, replace);
+  const inventory = importInventory(h.inventory ?? { runs: [], findings: [], links: [] });
+  let runsWritten = 0;
+  let runsSkipped = 0;
+  if (opts.includeRuns !== false) {
+    ensureDirs();
+    for (const r of h.runs ?? []) {
+      const dir = path10.join(RUNS_DIR, path10.basename(r.id));
+      if (fs13.existsSync(path10.join(dir, "meta.json")) && !replace) {
+        runsSkipped++;
+        continue;
+      }
+      try {
+        fs13.mkdirSync(dir, { recursive: true });
+        fs13.writeFileSync(path10.join(dir, "meta.json"), JSON.stringify(r.meta, null, 2));
+        fs13.writeFileSync(path10.join(dir, "findings.json"), JSON.stringify(r.findings, null, 2));
+        runsWritten++;
+      } catch {
+      }
+    }
+  }
+  return { scope, triage, assets, inventory, runsWritten, runsSkipped, exportedAt: h.exported_at };
+}
+
 // src/index.ts
 var server = new McpServer(
   { name: "xolotl", version: "0.1.0" },
@@ -39556,8 +39705,8 @@ function progress(extra, done, total, message) {
   });
 }
 function resolveDir(p) {
-  const abs = path10.resolve(p);
-  if (!fs13.existsSync(abs) || !fs13.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
+  const abs = path11.resolve(p);
+  if (!fs14.existsSync(abs) || !fs14.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
   return abs;
 }
 function summaryText(meta3, findings, top = 15) {
@@ -39836,9 +39985,9 @@ server.registerTool(
   },
   async ({ output_path }) => {
     ensureDirs();
-    const file2 = path10.resolve(output_path ?? path10.join(HOME, "xolotl-collect.sh"));
-    fs13.mkdirSync(path10.dirname(file2), { recursive: true });
-    fs13.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+    const file2 = path11.resolve(output_path ?? path11.join(HOME, "xolotl-collect.sh"));
+    fs14.mkdirSync(path11.dirname(file2), { recursive: true });
+    fs14.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
     return text(
       [
         `Script escrito en ${file2} (${collector_default.split("\n").length} l\xEDneas, solo lectura: no instala ni cambia nada y no copia secretos).`,
@@ -39873,9 +40022,9 @@ server.registerTool(
     if (!!a.target === !!a.collected_file) return fail("Indica target (SSH) o collected_file, uno de los dos.");
     if (a.target && resolveMode(a.mode) === "advisory") {
       ensureDirs();
-      const file2 = path10.join(HOME, "xolotl-collect.sh");
-      fs13.mkdirSync(path10.dirname(file2), { recursive: true });
-      fs13.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+      const file2 = path11.join(HOME, "xolotl-collect.sh");
+      fs14.mkdirSync(path11.dirname(file2), { recursive: true });
+      fs14.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
       return text(advisoryHost(file2));
     }
     const timeoutMs = minutes(a.timeout_minutes ?? 15);
@@ -39891,9 +40040,9 @@ server.registerTool(
         collected = await collectViaSsh({ target: a.target, port: a.port, identityFile: a.identity_file, sudo: a.sudo ?? true, timeoutMs }, collector_default);
         via = `ssh ${a.target}`;
       } else {
-        const file2 = path10.resolve(a.collected_file);
-        if (!fs13.existsSync(file2)) return fail(`No existe ${file2}`);
-        collected = fs13.readFileSync(file2, "utf8");
+        const file2 = path11.resolve(a.collected_file);
+        if (!fs14.existsSync(file2)) return fail(`No existe ${file2}`);
+        collected = fs14.readFileSync(file2, "utf8");
         via = file2;
       }
     } catch (e) {
@@ -40095,7 +40244,7 @@ server.registerTool(
             const mark = ln >= loc.startLine && ln <= (loc.endLine ?? loc.startLine) ? ">" : " ";
             return `${mark}${String(ln).padStart(5)} | ${l}`;
           }).join("\n");
-          out.push("", `C\xF3digo (${path10.join(root, loc.file)}):`, numbered);
+          out.push("", `C\xF3digo (${path11.join(root, loc.file)}):`, numbered);
         }
       }
       return text(out.join("\n"));
@@ -40275,6 +40424,48 @@ server.registerTool(
   }
 );
 server.registerTool(
+  "handoff",
+  {
+    title: "Traspaso de compromiso (exportar / importar estado)",
+    description: "Empaqueta el estado local de Xolotl en un archivo JSON para retomar el trabajo en otra sesi\xF3n o m\xE1quina: alcance autorizado, triage, criticidad de activos, el inventario acumulado y (opcional) los artefactos de cada corrida. No incluye los feeds (se rebajan con risk_feeds). action=export escribe el archivo; action=import lo restaura (merge por defecto, o replace para reemplazar alcance/triage/criticidad). El archivo contiene datos sensibles: gu\xE1rdalo en un lugar de confianza, no lo subas a servicios externos.",
+    inputSchema: {
+      action: external_exports.enum(["export", "import"]),
+      path: external_exports.string().describe("Ruta del archivo de traspaso (.json) a escribir o leer"),
+      include_runs: external_exports.boolean().optional().describe("Incluir/restaurar los artefactos de cada corrida (por defecto true). false deja solo alcance, triage, criticidad e inventario"),
+      replace: external_exports.boolean().optional().describe("Solo import: reemplaza el alcance/triage/criticidad en vez de fusionarlos, y sobrescribe corridas existentes (por defecto false, fusiona)")
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false }
+  },
+  async (a) => {
+    try {
+      if (a.action === "export") {
+        const s = writeHandoff(a.path, a.include_runs ?? true);
+        return text(
+          [
+            `Traspaso escrito en ${s.file} (${(s.bytes / 1024).toFixed(0)} KB).`,
+            `Incluye: ${s.scope} objetivo(s) de alcance \xB7 ${s.triage} decisi\xF3n(es) de triage \xB7 ${s.assets} criticidad(es) \xB7 ${s.findings} hallazgo(s) en inventario \xB7 ${s.runs} corrida(s).`,
+            "Contiene datos sensibles (fragmentos de c\xF3digo, secretos redactados, hosts). Tr\xE1talo como confidencial; no lo subas a servicios externos.",
+            "Para retomar en otra m\xE1quina: copia el archivo y usa handoff action=import."
+          ].join("\n")
+        );
+      }
+      if (!fs14.existsSync(a.path)) return fail(`No existe el archivo ${a.path}.`);
+      const r = readHandoff(a.path, { replace: a.replace, includeRuns: a.include_runs });
+      return text(
+        [
+          `Traspaso importado (exportado ${r.exportedAt.slice(0, 16).replace("T", " ")} UTC)${a.replace ? " [reemplazo]" : " [fusi\xF3n]"}.`,
+          `Alcance: ${r.scope} objetivo(s) \xB7 Triage: ${r.triage} \xB7 Criticidad: ${r.assets} activo(s).`,
+          `Inventario: ${r.inventory.findings} hallazgo(s), ${r.inventory.runs} corrida(s), ${r.inventory.links} enlace(s).`,
+          `Corridas restauradas: ${r.runsWritten}${r.runsSkipped ? ` (${r.runsSkipped} ya exist\xEDan, se conservaron)` : ""}.`,
+          "Revisa el estado con inventory, runs_list y dast_scope."
+        ].join("\n")
+      );
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
   "report_generate",
   {
     title: "Generar informe",
@@ -40292,9 +40483,9 @@ server.registerTool(
       const fmt = a.format ?? "md";
       const incl = a.include_suppressed ?? true;
       const body = fmt === "md" ? toMarkdown(meta3, findings, incl) : fmt === "html" ? toHtml(meta3, findings, incl) : JSON.stringify(fmt === "sarif" ? toSarif(meta3, findings) : { meta: meta3, findings }, null, 2);
-      const file2 = path10.resolve(a.output_path ?? path10.join(runDir(meta3.id), `informe.${fmt}`));
-      fs13.mkdirSync(path10.dirname(file2), { recursive: true });
-      fs13.writeFileSync(file2, body);
+      const file2 = path11.resolve(a.output_path ?? path11.join(runDir(meta3.id), `informe.${fmt}`));
+      fs14.mkdirSync(path11.dirname(file2), { recursive: true });
+      fs14.writeFileSync(file2, body);
       return text(`Informe ${fmt.toUpperCase()} escrito en ${file2} (${meta3.summary.total} hallazgos activos).`);
     } catch (e) {
       return fail(e.message);

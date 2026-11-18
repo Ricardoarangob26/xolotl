@@ -53,6 +53,23 @@ export function addScope(value: string, authorizedBy: string, evidence: string):
   return entry;
 }
 
+/** Importa entradas de alcance de un traspaso: merge por valor, o reemplazo total. */
+export function importScope(entries: ScopeEntry[], replace: boolean): number {
+  const byVal = new Map((replace ? [] : loadScope()).map((e) => [e.value, e]));
+  for (const e of entries ?? []) {
+    if (!e?.value) continue;
+    byVal.set(e.value, {
+      value: e.value,
+      authorized_by: e.authorized_by ?? "importado",
+      evidence: e.evidence ?? "traspaso",
+      added_at: e.added_at ?? new Date().toISOString(),
+    });
+  }
+  const merged = [...byVal.values()];
+  saveScope(merged);
+  return merged.length;
+}
+
 export function removeScope(value: string): boolean {
   const v = normalizeEntry(value);
   const entries = loadScope();

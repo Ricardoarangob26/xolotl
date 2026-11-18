@@ -32,6 +32,7 @@ import { findingHistory, inventorySummary, listAssets, queryFindings } from "./i
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
+import { readHandoff, writeHandoff } from "./handoff.js";
 
 const server = new McpServer(
   { name: "xolotl", version: "0.1.0" },
@@ -835,6 +836,50 @@ server.registerTool(
       const keys = Object.keys(db).sort();
       if (!keys.length) return text("Ningún activo tiene criticidad fijada (todos cuentan como 'normal'). Fíjala con action=set.");
       return text(["Criticidad de activos:", ...keys.map((k) => `- ${k} — ${db[k].criticality}${db[k].note ? `: ${db[k].note}` : ""} (${db[k].at.slice(0, 10)})`)].join("\n"));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "handoff",
+  {
+    title: "Traspaso de compromiso (exportar / importar estado)",
+    description:
+      "Empaqueta el estado local de Xolotl en un archivo JSON para retomar el trabajo en otra sesión o máquina: alcance autorizado, triage, criticidad de activos, el inventario acumulado y (opcional) los artefactos de cada corrida. No incluye los feeds (se rebajan con risk_feeds). action=export escribe el archivo; action=import lo restaura (merge por defecto, o replace para reemplazar alcance/triage/criticidad). El archivo contiene datos sensibles: guárdalo en un lugar de confianza, no lo subas a servicios externos.",
+    inputSchema: {
+      action: z.enum(["export", "import"]),
+      path: z.string().describe("Ruta del archivo de traspaso (.json) a escribir o leer"),
+      include_runs: z.boolean().optional().describe("Incluir/restaurar los artefactos de cada corrida (por defecto true). false deja solo alcance, triage, criticidad e inventario"),
+      replace: z.boolean().optional().describe("Solo import: reemplaza el alcance/triage/criticidad en vez de fusionarlos, y sobrescribe corridas existentes (por defecto false, fusiona)"),
+    },
+    annotations: { readOnlyHint: false, openWorldHint: false },
+  },
+  async (a) => {
+    try {
+      if (a.action === "export") {
+        const s = writeHandoff(a.path, a.include_runs ?? true);
+        return text(
+          [
+            `Traspaso escrito en ${s.file} (${(s.bytes / 1024).toFixed(0)} KB).`,
+            `Incluye: ${s.scope} objetivo(s) de alcance · ${s.triage} decisión(es) de triage · ${s.assets} criticidad(es) · ${s.findings} hallazgo(s) en inventario · ${s.runs} corrida(s).`,
+            "Contiene datos sensibles (fragmentos de código, secretos redactados, hosts). Trátalo como confidencial; no lo subas a servicios externos.",
+            "Para retomar en otra máquina: copia el archivo y usa handoff action=import.",
+          ].join("\n"),
+        );
+      }
+      if (!fs.existsSync(a.path)) return fail(`No existe el archivo ${a.path}.`);
+      const r = readHandoff(a.path, { replace: a.replace, includeRuns: a.include_runs });
+      return text(
+        [
+          `Traspaso importado (exportado ${r.exportedAt.slice(0, 16).replace("T", " ")} UTC)${a.replace ? " [reemplazo]" : " [fusión]"}.`,
+          `Alcance: ${r.scope} objetivo(s) · Triage: ${r.triage} · Criticidad: ${r.assets} activo(s).`,
+          `Inventario: ${r.inventory.findings} hallazgo(s), ${r.inventory.runs} corrida(s), ${r.inventory.links} enlace(s).`,
+          `Corridas restauradas: ${r.runsWritten}${r.runsSkipped ? ` (${r.runsSkipped} ya existían, se conservaron)` : ""}.`,
+          "Revisa el estado con inventory, runs_list y dast_scope.",
+        ].join("\n"),
+      );
     } catch (e) {
       return fail((e as Error).message);
     }

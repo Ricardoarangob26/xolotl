@@ -41,7 +41,7 @@ export interface RunRow {
   total: number;
 }
 
-interface Link {
+export interface Link {
   run_id: string;
   fingerprint: string;
   severity: string;
@@ -55,6 +55,7 @@ interface Backend {
   linkRunFinding(l: Link): void;
   allFindings(): FindingRow[];
   allRuns(): RunRow[];
+  allLinks(): Link[];
   linksForFinding(fp: string): Link[];
   begin(): void;
   commit(): void;
@@ -111,6 +112,7 @@ function sqliteBackend(): Backend | null {
       linkRunFinding: (l) => insLink.run(l.run_id, l.fingerprint, l.severity, l.status),
       allFindings: () => db.prepare("SELECT * FROM findings").all() as FindingRow[],
       allRuns: () => db.prepare("SELECT * FROM runs ORDER BY started_at").all() as RunRow[],
+      allLinks: () => db.prepare("SELECT * FROM run_findings").all() as Link[],
       linksForFinding: (fp) => db.prepare("SELECT * FROM run_findings WHERE fingerprint=?").all(fp) as Link[],
       begin: () => db.exec("BEGIN"),
       commit: () => db.exec("COMMIT"),
@@ -159,6 +161,7 @@ function jsonBackend(): Backend {
     },
     allFindings: () => Object.values(data.findings),
     allRuns: () => data.runs.slice().sort((a, b) => a.started_at.localeCompare(b.started_at)),
+    allLinks: () => data.links.slice(),
     linksForFinding: (fp) => data.links.filter((l) => l.fingerprint === fp),
     begin: () => {},
     commit: () => {
@@ -235,6 +238,34 @@ export function recordRun(meta: RunMeta, findings: Finding[]): void {
     b.commit();
     throw e;
   }
+}
+
+// ───────────────────────────── Traspaso (export/import) ─────────────────────────────
+export interface InventoryExport {
+  runs: RunRow[];
+  findings: FindingRow[];
+  links: Link[];
+}
+
+export function exportInventory(): InventoryExport {
+  const b = backend();
+  return { runs: b.allRuns(), findings: b.allFindings(), links: b.allLinks() };
+}
+
+/** Vuelca un inventario de otro Xolotl: upsert por huella/corrida (merge). */
+export function importInventory(data: InventoryExport): { runs: number; findings: number; links: number } {
+  const b = backend();
+  b.begin();
+  try {
+    for (const r of data.runs ?? []) b.insertRun(r);
+    for (const f of data.findings ?? []) b.upsertFinding(f);
+    for (const l of data.links ?? []) b.linkRunFinding(l);
+    b.commit();
+  } catch (e) {
+    b.commit();
+    throw e;
+  }
+  return { runs: data.runs?.length ?? 0, findings: data.findings?.length ?? 0, links: data.links?.length ?? 0 };
 }
 
 // ───────────────────────────── Consultas ─────────────────────────────

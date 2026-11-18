@@ -83,7 +83,7 @@ Es lo más barato y lo que más valor agrega: todo lo que ya se escanea gana con
 | **Mapeo a MITRE ATT&CK** | Técnica asociada por hallazgo (útil para detección y para planear). | `engagement-planner` |
 | **Plan de compromiso** | Skill `appsec-engagement`: reglas de enfrentamiento, alcance y ventanas sobre `dast_scope`, con plantilla exportable. | `engagement-planner` |
 | **Resumen ejecutivo** | Sección de negocio en el informe: tendencia (nuevos/persistentes), top de riesgo, avance de remediación. | `report-generator` |
-| **Traspaso de compromiso** | Tool `handoff_export`/`handoff_import`: paquete JSON con alcance, corridas, triage y notas para retomar en otra sesión o máquina. | `handoff.sh` |
+| **Traspaso de compromiso** ✅ | Tool `handoff` (export/import): un archivo JSON con alcance, triage, criticidad de activos, inventario acumulado y los artefactos de cada corrida, para retomar en otra sesión o máquina (fusión o reemplazo). No incluye los feeds (se rebajan con `risk_feeds`). | `handoff.sh` |
 | **Siguiente paso sugerido** | `inventory` propone qué falta evaluar por activo (por ejemplo, "tiene 443 abierto y no tiene DAST", o "host sin CIS"). | `/recommend` |
 | **Plan de evaluación por activo** | Skill que encadena las tools según el tipo de activo y el nivel de acceso, respetando Tier 1/Tier 2. | `swarm-orchestrator` |
 | **Revalidación no destructiva** | Repetir solo la verificación de un hallazgo (plantilla o regla puntual) para confirmar o descartar sin repetir toda la corrida. | `poc-validator` |

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ensureDirs, RUNS_DIR, TRIAGE_FILE } from "./config.js";
-import { CATEGORIES, Finding, SEVERITIES, TriageStatus } from "./findings.js";
+import { CATEGORIES, Finding, SEVERITIES, TRIAGE_STATUSES, TriageStatus } from "./findings.js";
 import { recordRun } from "./inventory.js";
 
 export interface ToolRun {
@@ -138,6 +138,24 @@ function applyTriage(meta: RunMeta, findings: Finding[]) {
       f.triage = { status: t.status, note: t.note, at: t.at };
     }
   }
+}
+
+/** Triage completo (por huella) para un traspaso. */
+export function exportTriage(): Record<string, TriageEntry> {
+  return loadTriage();
+}
+
+/** Importa decisiones de triage de un traspaso: merge por huella, o reemplazo total. */
+export function importTriage(incoming: Record<string, { status: string; note?: string; at?: string; title?: string }>, replace: boolean): number {
+  const db = replace ? {} : loadTriage();
+  for (const [fp, t] of Object.entries(incoming ?? {})) {
+    if (t?.status && (TRIAGE_STATUSES as readonly string[]).includes(t.status)) {
+      db[fp] = { status: t.status as TriageStatus, note: t.note, at: t.at ?? new Date().toISOString(), title: t.title ?? "" };
+    }
+  }
+  ensureDirs();
+  fs.writeFileSync(TRIAGE_FILE, JSON.stringify(db, null, 2));
+  return Object.keys(db).length;
 }
 
 export function setTriage(findings: Finding[], status: TriageStatus, note?: string): void {

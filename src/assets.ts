@@ -55,6 +55,16 @@ export function clearCriticality(asset: string): boolean {
   return true;
 }
 
+/** Importa criticidades de un traspaso: merge por activo, o reemplazo total. */
+export function importAssets(incoming: AssetDb, replace: boolean): number {
+  const db = replace ? {} : loadAssets();
+  for (const [k, v] of Object.entries(incoming ?? {})) {
+    if (v?.criticality) db[normKey(k)] = { criticality: v.criticality, note: v.note, at: v.at ?? new Date().toISOString() };
+  }
+  saveAssets(db);
+  return Object.keys(db).length;
+}
+
 /** Criticidad de un activo: coincidencia exacta y, si falla, quitando el prefijo "usuario@". */
 export function criticalityOf(asset: string, db: AssetDb = loadAssets()): AssetEntry | undefined {
   const k = normKey(asset);
