@@ -78,7 +78,7 @@ Es lo más barato y lo que más valor agrega: todo lo que ya se escanea gana con
 
 | Tarea | Qué agrega | Inspiración |
 |---|---|---|
-| **Puntuación de riesgo** ✅ | EPSS (probabilidad de explotación) y CISA KEV (explotación activa) en cada hallazgo con CVE, con feeds cacheados en `~/.xolotl/feeds` (descarga opcional vía `risk_feeds`, funciona sin red). Prioridad = severidad × explotabilidad, visible en `findings_query` y en una tabla «Prioridad por riesgo» del informe que reordena entre severidades. Pendiente: vector CVSS desde los parsers y factor de criticidad del activo. | `risk-scorer` |
+| **Puntuación de riesgo** ✅ | Base **CVSS** real (vector y puntaje de NVD/proveedor/GHSA vía OSV, Trivy y Nuclei) combinada con **EPSS** (probabilidad de explotación) y **CISA KEV** (explotación activa). Feeds cacheados en `~/.xolotl/feeds` (descarga opcional vía `risk_feeds`, funciona sin red). Prioridad = CVSS × explotabilidad, visible en `findings_query`, en el detalle del informe (línea CVSS + vector) y en una tabla «Prioridad por riesgo» que reordena entre severidades; el SARIF usa el CVSS real como `security-severity`. Pendiente: factor de criticidad del activo (del `inventory`). | `risk-scorer` |
 | **Mapeo a marcos** | De CWE/regla a PCI DSS 4.0, NIST 800-53/CSF 2.0, ISO 27001:2022, CIS Controls v8 y OWASP Top 10/ASVS. Informe de brechas por control en `report_generate`. | `compliance-mapper` |
 | **Mapeo a MITRE ATT&CK** | Técnica asociada por hallazgo (útil para detección y para planear). | `engagement-planner` |
 | **Plan de compromiso** | Skill `appsec-engagement`: reglas de enfrentamiento, alcance y ventanas sobre `dast_scope`, con plantilla exportable. | `engagement-planner` |

@@ -1,5 +1,11 @@
 /* Traducen la salida nativa de cada herramienta al formato común RawFinding. */
-import { Category, cweList, normSeverity, RawFinding, relPath, sevFromScore, Severity, strList } from "./findings.js";
+import { Category, Cvss, cweList, normSeverity, RawFinding, relPath, sevFromScore, Severity, strList } from "./findings.js";
+
+/** Versión CVSS a partir del prefijo del vector ("CVSS:3.1/…"), con respaldo. */
+function cvssVersion(vector?: string, fallback?: string): string | undefined {
+  const m = String(vector ?? "").match(/^CVSS:(\d\.\d)/);
+  return m ? m[1] : fallback;
+}
 
 const firstSentence = (s: string, max = 140) => {
   const line = (s ?? "").split(/\r?\n/)[0].trim();
@@ -101,6 +107,27 @@ function osvSeverity(vulns: any[], group: any): Severity {
   return "medium";
 }
 
+/** CVSS del grupo OSV: base score en group.max_severity, vector (si lo hay) en vuln.severity[]. */
+function osvCvss(vulns: any[], group: any): Cvss | undefined {
+  const score = parseFloat(group?.max_severity);
+  if (isNaN(score) || score <= 0) return undefined;
+  let vector: string | undefined;
+  let version: string | undefined;
+  for (const v of vulns) {
+    for (const sv of v.severity ?? []) {
+      const type = String(sv.type ?? "");
+      if (type.startsWith("CVSS_V4")) {
+        vector = sv.score;
+        version = cvssVersion(sv.score, "4.0");
+      } else if (type.startsWith("CVSS_V3") && version !== "4.0") {
+        vector ??= sv.score;
+        version ??= cvssVersion(sv.score, "3.1");
+      }
+    }
+  }
+  return { score, vector, version, source: "osv" };
+}
+
 const verParts = (v: string) => v.replace(/^v/, "").split(/[.+-]/).map((p) => (/^\d+$/.test(p) ? Number(p) : -1));
 function cmpVer(a: string, b: string): number {
   const x = verParts(a);
@@ -156,6 +183,7 @@ export function parseOsv(data: any, root: string): RawFinding[] {
           ids,
           cve: ids.filter((i) => i.startsWith("CVE-")),
           cwe: cweList(members.flatMap((v) => v.database_specific?.cwe_ids ?? [])),
+          cvss: osvCvss(members, g),
           package: { name: pkg.name, version: pkg.version, ecosystem: pkg.ecosystem, fixedVersion: osvFixed(members, pkg.name, pkg.version) },
           references: [`https://osv.dev/vulnerability/${main.id}`],
         });
@@ -166,6 +194,27 @@ export function parseOsv(data: any, root: string): RawFinding[] {
 }
 
 // ───────────── Trivy (JSON) ─────────────
+const CVSS_VER_RANK: Record<string, number> = { "4.0": 3, "3.1": 2, "3.0": 2, "2.0": 1 };
+
+/** Mejor CVSS de v.CVSS: versión más nueva, con NVD de preferencia y, a igualdad, el puntaje más alto. */
+function trivyCvss(v: any): Cvss | undefined {
+  const entries: Cvss[] = [];
+  for (const [source, c] of Object.entries<any>(v.CVSS ?? {})) {
+    if (c.V40Score != null) entries.push({ score: Number(c.V40Score), vector: c.V40Vector, version: cvssVersion(c.V40Vector, "4.0"), source });
+    if (c.V3Score != null) entries.push({ score: Number(c.V3Score), vector: c.V3Vector, version: cvssVersion(c.V3Vector, "3.1"), source });
+    if (c.V2Score != null) entries.push({ score: Number(c.V2Score), vector: c.V2Vector, version: cvssVersion(c.V2Vector, "2.0"), source });
+  }
+  const valid = entries.filter((e) => !isNaN(e.score));
+  if (!valid.length) return undefined;
+  valid.sort(
+    (a, b) =>
+      (CVSS_VER_RANK[b.version ?? ""] ?? 0) - (CVSS_VER_RANK[a.version ?? ""] ?? 0) ||
+      Number(b.source === "nvd") - Number(a.source === "nvd") ||
+      b.score - a.score,
+  );
+  return valid[0];
+}
+
 export function parseTrivy(data: any, root: string | null, mode: "fs" | "image" | "config" | "host", hostName?: string): RawFinding[] {
   const out: RawFinding[] = [];
   const artifact = data?.ArtifactName;
@@ -186,6 +235,7 @@ export function parseTrivy(data: any, root: string | null, mode: "fs" | "image" 
         ids,
         cve: ids.filter((i: string) => i.startsWith("CVE-")),
         cwe: cweList(v.CweIDs),
+        cvss: trivyCvss(v),
         package: { name: v.PkgName, version: v.InstalledVersion, ecosystem: res.Type, fixedVersion: v.FixedVersion || undefined },
         references: strList(v.PrimaryURL),
       });
@@ -275,6 +325,7 @@ export function parseNuclei(jsonl: string, secrets: string[] = []): RawFinding[]
       location: { url: r["matched-at"] ?? r.host, target: r.host },
       cve: strList(cls["cve-id"]).map((c) => c.toUpperCase()),
       cwe: cweList(cls["cwe-id"]),
+      cvss: !isNaN(cvss) ? { score: cvss, vector: cls["cvss-metrics"] || undefined, version: cvssVersion(cls["cvss-metrics"]), source: "nuclei" } : undefined,
       references: strList(info.reference).slice(0, 5),
       evidence: [extracted.length ? `Extraído: ${extracted.join(", ")}` : "", curl ? `Reproducir: ${curl}` : ""].filter(Boolean).join("\n") || undefined,
       remediation: info.remediation,

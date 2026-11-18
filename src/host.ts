@@ -420,11 +420,13 @@ export function aggregateHostVulns(raw: RawFinding[]): { findings: RawFinding[];
     const refs = new Set<string>();
     const cwe = new Set<string>();
     let worst: Severity = "info";
+    let worstCvss: RawFinding["cvss"];
     let fix: string | undefined;
     let fixable = 0;
     for (const it of items) {
       counts[it.severity]++;
       if (sevRank(it.severity) < sevRank(worst)) worst = it.severity;
+      if (it.cvss && (!worstCvss || it.cvss.score > worstCvss.score)) worstCvss = it.cvss; // el peor CVSS del paquete
       for (const c of it.cve ?? []) cves.add(c);
       for (const r of it.references ?? []) refs.add(r);
       for (const c of it.cwe ?? []) cwe.add(c);
@@ -453,6 +455,7 @@ export function aggregateHostVulns(raw: RawFinding[]): { findings: RawFinding[];
       // Se guardan los primeros CVE como muestra; el archivo crudo de la corrida tiene todos.
       cve: sortedCves.slice(0, 60),
       cwe: [...cwe].slice(0, 30),
+      cvss: worstCvss,
       ids: sortedCves.slice(0, 60),
       package: { name: pkg.name, version: pkg.version, ecosystem: pkg.ecosystem, fixedVersion: fix },
       evidence: `${items.length} CVE en total${cves.size !== items.length ? ` (${cves.size} identificadores distintos)` : ""}; ${breakdown}.`,

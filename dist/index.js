@@ -36980,6 +36980,7 @@ function mergeInto(a, b) {
   a.cve = [.../* @__PURE__ */ new Set([...a.cve ?? [], ...b.cve ?? []])];
   a.cwe = [.../* @__PURE__ */ new Set([...a.cwe ?? [], ...b.cwe ?? []])];
   a.references = [.../* @__PURE__ */ new Set([...a.references ?? [], ...b.references ?? []])];
+  if (b.cvss && (!a.cvss || b.cvss.score > a.cvss.score)) a.cvss = b.cvss;
   if (a.package && b.package && !a.package.fixedVersion) a.package.fixedVersion = b.package.fixedVersion;
   if (!a.description && b.description) a.description = b.description;
 }
@@ -37564,6 +37565,7 @@ function details(f) {
   if (f.package) rows.push(`- **Paquete:** ${f.package.name}@${f.package.version ?? "?"}${f.package.fixedVersion ? ` \u2192 actualizar a ${f.package.fixedVersion}` : " (sin versi\xF3n corregida publicada)"}`);
   const ids = [...f.cve ?? [], ...f.cwe ?? []];
   if (ids.length) rows.push(`- **Referencias:** ${ids.join(", ")}`);
+  if (f.cvss) rows.push(`- **CVSS:** ${f.cvss.score}${f.cvss.version ? ` (v${f.cvss.version})` : ""}${f.cvss.source ? ` \xB7 ${f.cvss.source}` : ""}${f.cvss.vector ? ` \xB7 \`${f.cvss.vector}\`` : ""}`);
   if (f.risk && (f.risk.kev || f.risk.epss !== void 0)) rows.push(`- **Prioridad de riesgo:** ${f.risk.score}/100 \u2014 ${f.risk.factors.join("; ")}`);
   if (f.triage) rows.push(`- **Estado:** ${STATUS_ES[f.triage.status]}${f.triage.note ? ` \u2014 ${f.triage.note}` : ""}`);
   return rows;
@@ -37660,7 +37662,7 @@ function toSarif(meta3, findings) {
       id: f.ruleId,
       shortDescription: { text: trunc(f.title, 200) },
       helpUri: f.references?.[0],
-      properties: { "security-severity": SARIF_SCORE[f.severity], tags: ["security", f.category, ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`)] }
+      properties: { "security-severity": f.cvss ? String(f.cvss.score) : SARIF_SCORE[f.severity], tags: ["security", f.category, ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`)] }
     });
   }
   return {
@@ -38011,11 +38013,13 @@ function aggregateHostVulns(raw) {
     const refs = /* @__PURE__ */ new Set();
     const cwe = /* @__PURE__ */ new Set();
     let worst = "info";
+    let worstCvss;
     let fix;
     let fixable = 0;
     for (const it of items) {
       counts[it.severity]++;
       if (sevRank(it.severity) < sevRank(worst)) worst = it.severity;
+      if (it.cvss && (!worstCvss || it.cvss.score > worstCvss.score)) worstCvss = it.cvss;
       for (const c of it.cve ?? []) cves.add(c);
       for (const r of it.references ?? []) refs.add(r);
       for (const c of it.cwe ?? []) cwe.add(c);
@@ -38039,6 +38043,7 @@ function aggregateHostVulns(raw) {
       // Se guardan los primeros CVE como muestra; el archivo crudo de la corrida tiene todos.
       cve: sortedCves.slice(0, 60),
       cwe: [...cwe].slice(0, 30),
+      cvss: worstCvss,
       ids: sortedCves.slice(0, 60),
       package: { name: pkg.name, version: pkg.version, ecosystem: pkg.ecosystem, fixedVersion: fix },
       evidence: `${items.length} CVE en total${cves.size !== items.length ? ` (${cves.size} identificadores distintos)` : ""}; ${breakdown}.`,
@@ -38383,6 +38388,10 @@ function inventoryFinding(hr) {
 }
 
 // src/parsers.ts
+function cvssVersion(vector, fallback) {
+  const m = String(vector ?? "").match(/^CVSS:(\d\.\d)/);
+  return m ? m[1] : fallback;
+}
 var firstSentence = (s, max = 140) => {
   const line = (s ?? "").split(/\r?\n/)[0].trim();
   const cut = line.match(/^(.{20,}?[.!?])\s/);
@@ -38473,6 +38482,25 @@ function osvSeverity(vulns, group) {
   }
   return "medium";
 }
+function osvCvss(vulns, group) {
+  const score = parseFloat(group?.max_severity);
+  if (isNaN(score) || score <= 0) return void 0;
+  let vector;
+  let version2;
+  for (const v of vulns) {
+    for (const sv of v.severity ?? []) {
+      const type = String(sv.type ?? "");
+      if (type.startsWith("CVSS_V4")) {
+        vector = sv.score;
+        version2 = cvssVersion(sv.score, "4.0");
+      } else if (type.startsWith("CVSS_V3") && version2 !== "4.0") {
+        vector ??= sv.score;
+        version2 ??= cvssVersion(sv.score, "3.1");
+      }
+    }
+  }
+  return { score, vector, version: version2, source: "osv" };
+}
 var verParts = (v) => v.replace(/^v/, "").split(/[.+-]/).map((p) => /^\d+$/.test(p) ? Number(p) : -1);
 function cmpVer(a, b) {
   const x = verParts(a);
@@ -38528,6 +38556,7 @@ function parseOsv(data, root) {
           ids,
           cve: ids.filter((i) => i.startsWith("CVE-")),
           cwe: cweList(members2.flatMap((v) => v.database_specific?.cwe_ids ?? [])),
+          cvss: osvCvss(members2, g),
           package: { name: pkg.name, version: pkg.version, ecosystem: pkg.ecosystem, fixedVersion: osvFixed(members2, pkg.name, pkg.version) },
           references: [`https://osv.dev/vulnerability/${main.id}`]
         });
@@ -38535,6 +38564,21 @@ function parseOsv(data, root) {
     }
   }
   return out;
+}
+var CVSS_VER_RANK = { "4.0": 3, "3.1": 2, "3.0": 2, "2.0": 1 };
+function trivyCvss(v) {
+  const entries = [];
+  for (const [source, c] of Object.entries(v.CVSS ?? {})) {
+    if (c.V40Score != null) entries.push({ score: Number(c.V40Score), vector: c.V40Vector, version: cvssVersion(c.V40Vector, "4.0"), source });
+    if (c.V3Score != null) entries.push({ score: Number(c.V3Score), vector: c.V3Vector, version: cvssVersion(c.V3Vector, "3.1"), source });
+    if (c.V2Score != null) entries.push({ score: Number(c.V2Score), vector: c.V2Vector, version: cvssVersion(c.V2Vector, "2.0"), source });
+  }
+  const valid = entries.filter((e) => !isNaN(e.score));
+  if (!valid.length) return void 0;
+  valid.sort(
+    (a, b) => (CVSS_VER_RANK[b.version ?? ""] ?? 0) - (CVSS_VER_RANK[a.version ?? ""] ?? 0) || Number(b.source === "nvd") - Number(a.source === "nvd") || b.score - a.score
+  );
+  return valid[0];
 }
 function parseTrivy(data, root, mode, hostName) {
   const out = [];
@@ -38556,6 +38600,7 @@ function parseTrivy(data, root, mode, hostName) {
         ids,
         cve: ids.filter((i) => i.startsWith("CVE-")),
         cwe: cweList(v.CweIDs),
+        cvss: trivyCvss(v),
         package: { name: v.PkgName, version: v.InstalledVersion, ecosystem: res.Type, fixedVersion: v.FixedVersion || void 0 },
         references: strList(v.PrimaryURL)
       });
@@ -38636,6 +38681,7 @@ function parseNuclei(jsonl, secrets = []) {
       location: { url: r["matched-at"] ?? r.host, target: r.host },
       cve: strList(cls["cve-id"]).map((c) => c.toUpperCase()),
       cwe: cweList(cls["cwe-id"]),
+      cvss: !isNaN(cvss) ? { score: cvss, vector: cls["cvss-metrics"] || void 0, version: cvssVersion(cls["cvss-metrics"]), source: "nuclei" } : void 0,
       references: strList(info.reference).slice(0, 5),
       evidence: [extracted.length ? `Extra\xEDdo: ${extracted.join(", ")}` : "", curl ? `Reproducir: ${curl}` : ""].filter(Boolean).join("\n") || void 0,
       remediation: info.remediation
@@ -39346,8 +39392,8 @@ function loadEpss() {
 }
 function scoreOne(f, kev, epss) {
   const cves = (f.cve ?? []).map((c) => c.toUpperCase());
-  const base = SEV_BASE[f.severity];
-  const factors = [`Severidad ${f.severity}`];
+  const base = f.cvss ? Math.min(10, Math.max(0, f.cvss.score)) : SEV_BASE[f.severity];
+  const factors = [f.cvss ? `CVSS ${f.cvss.version ?? ""} ${f.cvss.score}${f.cvss.source ? ` (${f.cvss.source})` : ""}`.replace(/\s+/g, " ").trim() : `Severidad ${f.severity}`];
   let isKev = false;
   let epssVal;
   for (const c of cves) {
@@ -39365,7 +39411,7 @@ function scoreOne(f, kev, epss) {
   } else {
     exploit = 0.6;
     if (cves.length) factors.push("Sin dato EPSS/KEV para su CVE");
-    else if (kev || epss) factors.push("Sin CVE: prioridad por severidad");
+    else if ((kev || epss) && !f.cvss) factors.push("Sin CVE: prioridad por severidad");
   }
   let score = Math.round(base * exploit * 10);
   if (isKev) score = Math.max(score, 90);

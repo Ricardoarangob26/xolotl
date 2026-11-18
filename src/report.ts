@@ -46,6 +46,7 @@ function details(f: Finding): string[] {
   if (f.package) rows.push(`- **Paquete:** ${f.package.name}@${f.package.version ?? "?"}${f.package.fixedVersion ? ` → actualizar a ${f.package.fixedVersion}` : " (sin versión corregida publicada)"}`);
   const ids = [...(f.cve ?? []), ...(f.cwe ?? [])];
   if (ids.length) rows.push(`- **Referencias:** ${ids.join(", ")}`);
+  if (f.cvss) rows.push(`- **CVSS:** ${f.cvss.score}${f.cvss.version ? ` (v${f.cvss.version})` : ""}${f.cvss.source ? ` · ${f.cvss.source}` : ""}${f.cvss.vector ? ` · \`${f.cvss.vector}\`` : ""}`);
   if (f.risk && (f.risk.kev || f.risk.epss !== undefined)) rows.push(`- **Prioridad de riesgo:** ${f.risk.score}/100 — ${f.risk.factors.join("; ")}`);
   if (f.triage) rows.push(`- **Estado:** ${STATUS_ES[f.triage.status]}${f.triage.note ? ` — ${f.triage.note}` : ""}`);
   return rows;
@@ -163,7 +164,7 @@ export function toSarif(meta: RunMeta, findings: Finding[]): object {
       id: f.ruleId,
       shortDescription: { text: trunc(f.title, 200) },
       helpUri: f.references?.[0],
-      properties: { "security-severity": SARIF_SCORE[f.severity], tags: ["security", f.category, ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`)] },
+      properties: { "security-severity": f.cvss ? String(f.cvss.score) : SARIF_SCORE[f.severity], tags: ["security", f.category, ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`)] },
     });
   }
   return {

@@ -66,8 +66,9 @@ export function loadEpss(): Map<string, number> | null {
 
 function scoreOne(f: Finding, kev: Set<string> | null, epss: Map<string, number> | null): RiskScore {
   const cves = (f.cve ?? []).map((c) => c.toUpperCase());
-  const base = SEV_BASE[f.severity];
-  const factors: string[] = [`Severidad ${f.severity}`];
+  // Base 0..10: el CVSS real de la herramienta si lo hay; si no, un valor por severidad.
+  const base = f.cvss ? Math.min(10, Math.max(0, f.cvss.score)) : SEV_BASE[f.severity];
+  const factors: string[] = [f.cvss ? `CVSS ${f.cvss.version ?? ""} ${f.cvss.score}${f.cvss.source ? ` (${f.cvss.source})` : ""}`.replace(/\s+/g, " ").trim() : `Severidad ${f.severity}`];
 
   let isKev = false;
   let epssVal: number | undefined;
@@ -88,7 +89,7 @@ function scoreOne(f: Finding, kev: Set<string> | null, epss: Map<string, number>
   } else {
     exploit = 0.6;
     if (cves.length) factors.push("Sin dato EPSS/KEV para su CVE");
-    else if (kev || epss) factors.push("Sin CVE: prioridad por severidad");
+    else if ((kev || epss) && !f.cvss) factors.push("Sin CVE: prioridad por severidad");
   }
 
   let score = Math.round(base * exploit * 10);

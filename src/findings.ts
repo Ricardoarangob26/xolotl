@@ -20,10 +20,18 @@ export interface Location {
   commit?: string;
 }
 
+/** Puntaje CVSS que publica la herramienta (NVD, proveedor, GHSA…), usado como base del riesgo. */
+export interface Cvss {
+  score: number; // base 0..10
+  vector?: string; // p. ej. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+  version?: string; // "2.0" | "3.0" | "3.1" | "4.0"
+  source?: string; // "nvd", "ghsa", "redhat", "nuclei", "osv"…
+}
+
 /**
- * Prioridad calculada a partir de la severidad base y, cuando el hallazgo tiene CVE,
- * de los feeds locales EPSS (probabilidad de explotación) y CISA KEV (explotación activa).
- * Se puebla tras deduplicar; ver `risk.ts`.
+ * Prioridad calculada a partir del CVSS (o la severidad si no hay) y, cuando el hallazgo
+ * tiene CVE, de los feeds locales EPSS (probabilidad de explotación) y CISA KEV (explotación
+ * activa). Se puebla tras deduplicar; ver `risk.ts`.
  */
 export interface RiskScore {
   score: number; // 0..100, prioridad para remediar
@@ -52,6 +60,7 @@ export interface Finding {
   snippet?: string;
   evidence?: string;
   remediation?: string;
+  cvss?: Cvss;
   risk?: RiskScore;
   triage?: { status: TriageStatus; note?: string; at: string };
 }
@@ -163,6 +172,7 @@ function mergeInto(a: Finding, b: Finding) {
   a.cve = [...new Set([...(a.cve ?? []), ...(b.cve ?? [])])];
   a.cwe = [...new Set([...(a.cwe ?? []), ...(b.cwe ?? [])])];
   a.references = [...new Set([...(a.references ?? []), ...(b.references ?? [])])];
+  if (b.cvss && (!a.cvss || b.cvss.score > a.cvss.score)) a.cvss = b.cvss; // el peor CVSS de las herramientas que coinciden
   if (a.package && b.package && !a.package.fixedVersion) a.package.fixedVersion = b.package.fixedVersion;
   if (!a.description && b.description) a.description = b.description;
 }
