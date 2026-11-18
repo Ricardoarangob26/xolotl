@@ -13,6 +13,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { HOME, ensureDirs } from "./config.js";
 import type { Finding, RiskScore, Severity } from "./findings.js";
+import { criticalityMult, criticalityOf, loadAssets } from "./assets.js";
 
 export const FEEDS_DIR = path.join(HOME, "feeds");
 const KEV_FILE = path.join(FEEDS_DIR, "kev.json");
@@ -99,11 +100,40 @@ function scoreOne(f: Finding, kev: Set<string> | null, epss: Map<string, number>
   return { score, severity: f.severity, epss: epssVal, kev: isKev || undefined, factors };
 }
 
-/** Puebla `f.risk` en cada hallazgo. Idempotente; seguro sin feeds. */
-export function enrichRisk(findings: Finding[]): void {
+/** Activo al que pertenece el hallazgo (mismo criterio que el inventario). */
+function assetOf(f: Finding, fallbackTarget?: string): string {
+  const l = f.location ?? {};
+  if (l.target) return l.target;
+  if (l.url) {
+    try {
+      return new URL(l.url).host;
+    } catch {
+      return l.url;
+    }
+  }
+  return fallbackTarget ?? "";
+}
+
+/**
+ * Puebla `f.risk` en cada hallazgo. Idempotente; seguro sin feeds.
+ * `fallbackTarget` (el objetivo de la corrida) resuelve el activo de los hallazgos sin ubicación propia.
+ */
+export function enrichRisk(findings: Finding[], fallbackTarget?: string): void {
   const kev = loadKev();
   const epss = loadEpss();
-  for (const f of findings) f.risk = scoreOne(f, kev, epss);
+  const assets = loadAssets();
+  for (const f of findings) {
+    const r = scoreOne(f, kev, epss);
+    const asset = assetOf(f, fallbackTarget);
+    const crit = asset ? criticalityOf(asset, assets) : undefined;
+    if (crit && crit.criticality !== "normal") {
+      const m = criticalityMult(crit.criticality);
+      r.score = Math.min(100, Math.max(0, Math.round(r.score * m)));
+      r.assetCriticality = crit.criticality;
+      r.factors.push(`Activo de criticidad ${crit.criticality} (×${m})`);
+    }
+    f.risk = r;
+  }
 }
 
 export interface FeedStatus {

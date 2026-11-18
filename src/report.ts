@@ -1,10 +1,13 @@
 import { CATEGORIES, Finding, SEVERITIES, where } from "./findings.js";
 import { isSuppressed, RunMeta } from "./store.js";
 
-/** Hallazgos activos ordenados por prioridad de riesgo (desc), solo los enriquecidos por feeds. */
+/** ¿La prioridad aporta algo más allá de la severidad? (feeds o criticidad del activo) */
+const riskEnriched = (f: Finding): boolean => !!f.risk && (f.risk.kev || f.risk.epss !== undefined || !!f.risk.assetCriticality);
+
+/** Hallazgos activos ordenados por prioridad de riesgo (desc), solo los enriquecidos. */
 function topByRisk(findings: Finding[], n = 10): Finding[] {
   return findings
-    .filter((f) => !isSuppressed(f) && f.risk && (f.risk.kev || f.risk.epss !== undefined))
+    .filter((f) => !isSuppressed(f) && riskEnriched(f))
     .sort((a, b) => (b.risk!.score - a.risk!.score) || a.id.localeCompare(b.id))
     .slice(0, n);
 }
@@ -12,7 +15,7 @@ function topByRisk(findings: Finding[], n = 10): Finding[] {
 const riskCell = (f: Finding): string => {
   const r = f.risk;
   if (!r) return "—";
-  const tags = [r.kev ? "KEV" : "", r.epss !== undefined ? `EPSS ${(r.epss * 100).toFixed(0)}%` : ""].filter(Boolean).join(", ");
+  const tags = [r.kev ? "KEV" : "", r.epss !== undefined ? `EPSS ${(r.epss * 100).toFixed(0)}%` : "", r.assetCriticality ? `activo ${r.assetCriticality}` : ""].filter(Boolean).join(", ");
   return `${r.score}${tags ? ` (${tags})` : ""}`;
 };
 
@@ -47,7 +50,7 @@ function details(f: Finding): string[] {
   const ids = [...(f.cve ?? []), ...(f.cwe ?? [])];
   if (ids.length) rows.push(`- **Referencias:** ${ids.join(", ")}`);
   if (f.cvss) rows.push(`- **CVSS:** ${f.cvss.score}${f.cvss.version ? ` (v${f.cvss.version})` : ""}${f.cvss.source ? ` · ${f.cvss.source}` : ""}${f.cvss.vector ? ` · \`${f.cvss.vector}\`` : ""}`);
-  if (f.risk && (f.risk.kev || f.risk.epss !== undefined)) rows.push(`- **Prioridad de riesgo:** ${f.risk.score}/100 — ${f.risk.factors.join("; ")}`);
+  if (riskEnriched(f)) rows.push(`- **Prioridad de riesgo:** ${f.risk!.score}/100 — ${f.risk!.factors.join("; ")}`);
   if (f.triage) rows.push(`- **Estado:** ${STATUS_ES[f.triage.status]}${f.triage.note ? ` — ${f.triage.note}` : ""}`);
   return rows;
 }

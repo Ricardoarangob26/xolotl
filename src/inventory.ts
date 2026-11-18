@@ -10,6 +10,7 @@ import fs from "node:fs";
 import { DB_FILE, INVENTORY_FILE, ensureDirs } from "./config.js";
 import type { Finding } from "./findings.js";
 import type { RunMeta } from "./store.js";
+import { criticalityOf, loadAssets } from "./assets.js";
 
 export interface FindingRow {
   fingerprint: string;
@@ -277,6 +278,7 @@ export interface AssetRow {
   bySeverity: Record<string, number>;
   firstSeen: string;
   lastSeen: string;
+  criticality?: string;
 }
 
 export function listAssets(): AssetRow[] {
@@ -293,6 +295,8 @@ export function listAssets(): AssetRow[] {
     if (r.first_seen < a.firstSeen) a.firstSeen = r.first_seen;
     if (r.last_seen > a.lastSeen) a.lastSeen = r.last_seen;
   }
+  const assetsDb = loadAssets();
+  for (const a of map.values()) a.criticality = criticalityOf(a.asset, assetsDb)?.criticality;
   return [...map.values()].sort((a, b) => b.total - a.total);
 }
 

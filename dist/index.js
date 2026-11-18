@@ -7239,12 +7239,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs13, exportName) {
+    function addFormats(ajv, list, fs14, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs13[f]);
+        ajv.addFormat(f, fs14[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7253,7 +7253,7 @@ var require_dist = __commonJS({
 });
 
 // src/index.ts
-import fs12 from "node:fs";
+import fs13 from "node:fs";
 import path10 from "node:path";
 
 // node_modules/zod/v3/helpers/util.js
@@ -36669,6 +36669,7 @@ var TOOLS_DIR = process.env.XOLOTL_TOOLS ?? path.join(HOME, "tools");
 var RUNS_DIR = path.join(HOME, "runs");
 var SCOPE_FILE = path.join(HOME, "scope.json");
 var TRIAGE_FILE = path.join(HOME, "triage.json");
+var ASSETS_FILE = path.join(HOME, "assets.json");
 var DB_FILE = path.join(HOME, "xolotl.db");
 var INVENTORY_FILE = path.join(HOME, "inventory.json");
 var DEFAULT_EXCLUDES = [
@@ -37051,9 +37052,8 @@ function where(f) {
 function riskTag(f) {
   const r = f.risk;
   if (!r) return "";
-  if (r.kev) return ` \xB7 riesgo ${r.score} KEV`;
-  if (r.epss !== void 0) return ` \xB7 riesgo ${r.score} (EPSS ${(r.epss * 100).toFixed(0)}%)`;
-  return "";
+  const parts = [r.kev ? "KEV" : "", r.epss !== void 0 ? `EPSS ${(r.epss * 100).toFixed(0)}%` : "", r.assetCriticality ? `activo ${r.assetCriticality}` : ""].filter(Boolean);
+  return parts.length ? ` \xB7 riesgo ${r.score} (${parts.join(", ")})` : "";
 }
 function oneLine(f) {
   const pkg = f.package ? ` ${f.package.name}@${f.package.version ?? "?"}${f.package.fixedVersion ? ` (fix: ${f.package.fixedVersion})` : ""}` : "";
@@ -37216,11 +37216,52 @@ async function installTool(id) {
 }
 
 // src/store.ts
-import fs7 from "node:fs";
+import fs8 from "node:fs";
 import path6 from "node:path";
 
 // src/inventory.ts
+import fs7 from "node:fs";
+
+// src/assets.ts
 import fs6 from "node:fs";
+var CRITICALITY = ["critica", "alta", "normal", "baja"];
+var MULT = { critica: 1.15, alta: 1.07, normal: 1, baja: 0.85 };
+var criticalityMult = (c) => MULT[c];
+var normKey = (a) => a.trim().toLowerCase();
+function loadAssets() {
+  try {
+    return JSON.parse(fs6.readFileSync(ASSETS_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+function saveAssets(db) {
+  ensureDirs();
+  fs6.writeFileSync(ASSETS_FILE, JSON.stringify(db, null, 2));
+}
+function setCriticality(asset, level, note) {
+  const db = loadAssets();
+  const entry = { criticality: level, note: note?.trim() || void 0, at: (/* @__PURE__ */ new Date()).toISOString() };
+  db[normKey(asset)] = entry;
+  saveAssets(db);
+  return entry;
+}
+function clearCriticality(asset) {
+  const db = loadAssets();
+  if (!db[normKey(asset)]) return false;
+  delete db[normKey(asset)];
+  saveAssets(db);
+  return true;
+}
+function criticalityOf(asset, db = loadAssets()) {
+  const k = normKey(asset);
+  if (db[k]) return db[k];
+  const at = k.indexOf("@");
+  if (at >= 0 && db[k.slice(at + 1)]) return db[k.slice(at + 1)];
+  return void 0;
+}
+
+// src/inventory.ts
 function sqliteBackend() {
   const sqlite = process.getBuiltinModule?.("node:sqlite");
   if (!sqlite?.DatabaseSync) return null;
@@ -37278,12 +37319,12 @@ function sqliteBackend() {
 function jsonBackend() {
   let data = { runs: [], findings: {}, links: [] };
   try {
-    data = { runs: [], findings: {}, links: [], ...JSON.parse(fs6.readFileSync(INVENTORY_FILE, "utf8")) };
+    data = { runs: [], findings: {}, links: [], ...JSON.parse(fs7.readFileSync(INVENTORY_FILE, "utf8")) };
   } catch {
   }
   const save = () => {
     ensureDirs();
-    fs6.writeFileSync(INVENTORY_FILE, JSON.stringify(data, null, 2));
+    fs7.writeFileSync(INVENTORY_FILE, JSON.stringify(data, null, 2));
   };
   let dirty = false;
   return {
@@ -37407,6 +37448,8 @@ function listAssets() {
     if (r.first_seen < a.firstSeen) a.firstSeen = r.first_seen;
     if (r.last_seen > a.lastSeen) a.lastSeen = r.last_seen;
   }
+  const assetsDb = loadAssets();
+  for (const a of map2.values()) a.criticality = criticalityOf(a.asset, assetsDb)?.criticality;
   return [...map2.values()].sort((a, b) => b.total - a.total);
 }
 function findingHistory(fingerprint) {
@@ -37447,7 +37490,7 @@ function newRun(kind, target, options) {
   const stamp = now.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
   const id = `${stamp}-${kind}-${slug(target)}`;
   const dir = path6.join(RUNS_DIR, id);
-  fs7.mkdirSync(dir, { recursive: true });
+  fs8.mkdirSync(dir, { recursive: true });
   return { meta: { id, kind, target, startedAt: now.toISOString(), tools: [], options }, dir };
 }
 var runDir = (id) => path6.join(RUNS_DIR, id);
@@ -37472,8 +37515,8 @@ function saveRun(meta3, findings) {
   applyTriage(meta3, findings);
   meta3.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
   meta3.summary = summarize(findings);
-  fs7.writeFileSync(path6.join(dir, "findings.json"), JSON.stringify(findings, null, 2));
-  fs7.writeFileSync(path6.join(dir, "meta.json"), JSON.stringify(meta3, null, 2));
+  fs8.writeFileSync(path6.join(dir, "findings.json"), JSON.stringify(findings, null, 2));
+  fs8.writeFileSync(path6.join(dir, "meta.json"), JSON.stringify(meta3, null, 2));
   try {
     recordRun(meta3, findings);
   } catch {
@@ -37481,22 +37524,22 @@ function saveRun(meta3, findings) {
 }
 function listRuns(limit = 20) {
   ensureDirs();
-  return fs7.readdirSync(RUNS_DIR).filter((d) => fs7.existsSync(path6.join(RUNS_DIR, d, "meta.json"))).sort().reverse().slice(0, limit).map((d) => JSON.parse(fs7.readFileSync(path6.join(RUNS_DIR, d, "meta.json"), "utf8")));
+  return fs8.readdirSync(RUNS_DIR).filter((d) => fs8.existsSync(path6.join(RUNS_DIR, d, "meta.json"))).sort().reverse().slice(0, limit).map((d) => JSON.parse(fs8.readFileSync(path6.join(RUNS_DIR, d, "meta.json"), "utf8")));
 }
 function loadRun(id) {
   const runId = id && id !== "latest" ? id : listRuns(1)[0]?.id;
   if (!runId) throw new Error("No hay corridas todav\xEDa. Lanza primero un escaneo (scan_static, scan_dast\u2026).");
   const dir = runDir(path6.basename(runId));
-  if (!fs7.existsSync(path6.join(dir, "meta.json"))) throw new Error(`No existe la corrida ${runId}. Usa runs_list.`);
-  const meta3 = JSON.parse(fs7.readFileSync(path6.join(dir, "meta.json"), "utf8"));
-  const findings = JSON.parse(fs7.readFileSync(path6.join(dir, "findings.json"), "utf8"));
+  if (!fs8.existsSync(path6.join(dir, "meta.json"))) throw new Error(`No existe la corrida ${runId}. Usa runs_list.`);
+  const meta3 = JSON.parse(fs8.readFileSync(path6.join(dir, "meta.json"), "utf8"));
+  const findings = JSON.parse(fs8.readFileSync(path6.join(dir, "findings.json"), "utf8"));
   applyTriage(meta3, findings);
   meta3.summary = summarize(findings);
   return { meta: meta3, findings };
 }
 function loadTriage() {
   try {
-    return JSON.parse(fs7.readFileSync(TRIAGE_FILE, "utf8"));
+    return JSON.parse(fs8.readFileSync(TRIAGE_FILE, "utf8"));
   } catch {
     return {};
   }
@@ -37524,17 +37567,18 @@ function setTriage(findings, status, note) {
     if (status === "open") delete db[f.fingerprint];
     else db[f.fingerprint] = { status, note, at, title: f.title };
   }
-  fs7.writeFileSync(TRIAGE_FILE, JSON.stringify(db, null, 2));
+  fs8.writeFileSync(TRIAGE_FILE, JSON.stringify(db, null, 2));
 }
 
 // src/report.ts
+var riskEnriched = (f) => !!f.risk && (f.risk.kev || f.risk.epss !== void 0 || !!f.risk.assetCriticality);
 function topByRisk(findings, n = 10) {
-  return findings.filter((f) => !isSuppressed(f) && f.risk && (f.risk.kev || f.risk.epss !== void 0)).sort((a, b) => b.risk.score - a.risk.score || a.id.localeCompare(b.id)).slice(0, n);
+  return findings.filter((f) => !isSuppressed(f) && riskEnriched(f)).sort((a, b) => b.risk.score - a.risk.score || a.id.localeCompare(b.id)).slice(0, n);
 }
 var riskCell = (f) => {
   const r = f.risk;
   if (!r) return "\u2014";
-  const tags = [r.kev ? "KEV" : "", r.epss !== void 0 ? `EPSS ${(r.epss * 100).toFixed(0)}%` : ""].filter(Boolean).join(", ");
+  const tags = [r.kev ? "KEV" : "", r.epss !== void 0 ? `EPSS ${(r.epss * 100).toFixed(0)}%` : "", r.assetCriticality ? `activo ${r.assetCriticality}` : ""].filter(Boolean).join(", ");
   return `${r.score}${tags ? ` (${tags})` : ""}`;
 };
 var SEV_ES = { critical: "Cr\xEDtica", high: "Alta", medium: "Media", low: "Baja", info: "Informativa" };
@@ -37566,7 +37610,7 @@ function details(f) {
   const ids = [...f.cve ?? [], ...f.cwe ?? []];
   if (ids.length) rows.push(`- **Referencias:** ${ids.join(", ")}`);
   if (f.cvss) rows.push(`- **CVSS:** ${f.cvss.score}${f.cvss.version ? ` (v${f.cvss.version})` : ""}${f.cvss.source ? ` \xB7 ${f.cvss.source}` : ""}${f.cvss.vector ? ` \xB7 \`${f.cvss.vector}\`` : ""}`);
-  if (f.risk && (f.risk.kev || f.risk.epss !== void 0)) rows.push(`- **Prioridad de riesgo:** ${f.risk.score}/100 \u2014 ${f.risk.factors.join("; ")}`);
+  if (riskEnriched(f)) rows.push(`- **Prioridad de riesgo:** ${f.risk.score}/100 \u2014 ${f.risk.factors.join("; ")}`);
   if (f.triage) rows.push(`- **Estado:** ${STATUS_ES[f.triage.status]}${f.triage.note ? ` \u2014 ${f.triage.note}` : ""}`);
   return rows;
 }
@@ -37686,11 +37730,11 @@ function toSarif(meta3, findings) {
 }
 
 // src/scanners.ts
-import fs9 from "node:fs";
+import fs10 from "node:fs";
 import path8 from "node:path";
 
 // src/host.ts
-import fs8 from "node:fs";
+import fs9 from "node:fs";
 import path7 from "node:path";
 function parseCollected(text2) {
   const out = /* @__PURE__ */ new Map();
@@ -38055,9 +38099,9 @@ function aggregateHostVulns(raw) {
   return { findings: [...passthrough, ...aggregated], rawCount, packages: aggregated.length };
 }
 function writeArtifacts(dir, text2, sbom) {
-  fs8.writeFileSync(path7.join(dir, "host-collect.txt"), text2);
+  fs9.writeFileSync(path7.join(dir, "host-collect.txt"), text2);
   const file2 = path7.join(dir, "host.cdx.json");
-  fs8.writeFileSync(file2, JSON.stringify(sbom));
+  fs9.writeFileSync(file2, JSON.stringify(sbom));
   return file2;
 }
 
@@ -38693,7 +38737,7 @@ function parseNuclei(jsonl, secrets = []) {
 // src/scanners.ts
 var exe = (t, args, opts) => run(t.cmd, [...t.prefix, ...args], opts);
 function readJson(file2) {
-  return JSON.parse(fs9.readFileSync(file2, "utf8"));
+  return JSON.parse(fs10.readFileSync(file2, "utf8"));
 }
 async function guarded(id, body) {
   const tool = resolveTool(id);
@@ -38714,7 +38758,7 @@ async function guarded(id, body) {
 }
 function needOutput(file2, r, what) {
   if (r.timedOut) throw new Error(`${what} super\xF3 el tiempo l\xEDmite`);
-  if (!fs9.existsSync(file2) || fs9.statSync(file2).size === 0) {
+  if (!fs10.existsSync(file2) || fs10.statSync(file2).size === 0) {
     throw new Error(`${what} no produjo resultados (c\xF3digo ${r.code}): ${tail(r)}`);
   }
 }
@@ -38725,7 +38769,7 @@ function hasFiles(root, exts, excludes, budget = 3e4) {
     const dir = stack.pop();
     let entries;
     try {
-      entries = fs9.readdirSync(dir, { withFileTypes: true });
+      entries = fs10.readdirSync(dir, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -38756,7 +38800,7 @@ function scanSemgrep(ctx, configs) {
     ];
     const opts = { cwd: ctx.root, timeoutMs: ctx.timeoutMs, env: { PYTHONUTF8: "1" } };
     let r = await exe(t, args, opts);
-    if (!r.timedOut && (!fs9.existsSync(out) || fs9.statSync(out).size === 0)) {
+    if (!r.timedOut && (!fs10.existsSync(out) || fs10.statSync(out).size === 0)) {
       r = await exe(t, args.filter((a) => a !== "--quiet"), opts);
     }
     needOutput(out, r, "semgrep");
@@ -38803,7 +38847,7 @@ function scanCodeql(ctx, opts) {
       timeoutMs: ctx.timeoutMs
     });
     needOutput(out, r2, "codeql analyze");
-    if (!opts.keepDb) fs9.rmSync(db, { recursive: true, force: true });
+    if (!opts.keepDb) fs10.rmSync(db, { recursive: true, force: true });
     return { findings: parseSarif(readJson(out), ctx.root, "codeql"), message: `lenguaje ${lang}, suite ${suite}` };
   });
 }
@@ -38857,13 +38901,13 @@ function scanTrivyImage(dir, image, scanners, timeoutMs) {
 }
 function scanGitleaks(ctx, mode) {
   return guarded("gitleaks", async (t) => {
-    const useGit = mode === "git" || mode === "auto" && fs9.existsSync(path8.join(ctx.root, ".git"));
+    const useGit = mode === "git" || mode === "auto" && fs10.existsSync(path8.join(ctx.root, ".git"));
     const out = path8.join(ctx.dir, "gitleaks.json");
     const args = [useGit ? "git" : "dir", ctx.root, "--report-format", "json", "--report-path", out, "--redact", "--no-banner", "--exit-code", "0", "--log-level", "error"];
-    if (!useGit && !fs9.existsSync(path8.join(ctx.root, ".gitleaks.toml"))) {
+    if (!useGit && !fs10.existsSync(path8.join(ctx.root, ".gitleaks.toml"))) {
       const cfg = path8.join(ctx.dir, "gitleaks.toml");
       const paths = ctx.excludes.map((e) => `  '''(^|[\\\\/])${e.replace(/\./g, "\\.")}([\\\\/]|$)''',`).join("\n");
-      fs9.writeFileSync(cfg, `[extend]
+      fs10.writeFileSync(cfg, `[extend]
 useDefault = true
 
 [[allowlists]]
@@ -38885,7 +38929,7 @@ function scanNuclei(dir, o) {
   return guarded("nuclei", async (t) => {
     const out = path8.join(dir, "nuclei.jsonl");
     const list = path8.join(dir, "targets.txt");
-    fs9.writeFileSync(list, o.targets.join("\n"));
+    fs10.writeFileSync(list, o.targets.join("\n"));
     const args = ["-l", list, "-jsonl", "-o", out, "-silent", "-nc", "-duc", "-or", "-rl", String(o.rateLimit), "-c", String(o.concurrency), "-timeout", "10", "-retries", "1"];
     if (o.profile === "baseline") args.push("-tags", BASELINE_TAGS.join(","));
     if (o.profile === "automatic") args.push("-as");
@@ -38897,16 +38941,16 @@ function scanNuclei(dir, o) {
     for (const h of o.headers ?? []) args.push("-H", h);
     const r = await exe(t, args, { timeoutMs: o.timeoutMs });
     if (r.timedOut) throw new Error("nuclei super\xF3 el tiempo l\xEDmite (los resultados parciales quedan en nuclei.jsonl)");
-    if (!fs9.existsSync(out)) {
+    if (!fs10.existsSync(out)) {
       if (r.code === 0) return { findings: [], message: "sin coincidencias" };
       throw new Error(`nuclei fall\xF3 (c\xF3digo ${r.code}): ${tail(r)}`);
     }
     const secretValues = (o.headers ?? []).map((h) => h.split(":").slice(1).join(":").trim());
-    const findings = parseNuclei(fs9.readFileSync(out, "utf8"), secretValues);
+    const findings = parseNuclei(fs10.readFileSync(out, "utf8"), secretValues);
     if (secretValues.length) {
-      let raw = fs9.readFileSync(out, "utf8");
+      let raw = fs10.readFileSync(out, "utf8");
       for (const s of secretValues) if (s.length >= 6) raw = raw.split(s).join("[REDACTADO]");
-      fs9.writeFileSync(out, raw);
+      fs10.writeFileSync(out, raw);
     }
     return { findings, message: `perfil ${o.profile}, ${o.targets.length} objetivo(s), ${o.rateLimit} req/s` };
   });
@@ -38959,7 +39003,7 @@ async function scanHostText(dir, text2, ignoreUnfixed, timeoutMs) {
     findings: checksToFindings(checks, info)
   };
   if (!info.trivyType) {
-    fs9.writeFileSync(path8.join(dir, "host-collect.txt"), text2);
+    fs10.writeFileSync(path8.join(dir, "host-collect.txt"), text2);
     return { info, outcomes: [config2, { run: { tool: "trivy", status: "skipped", message: `distribuci\xF3n no soportada para vulnerabilidades (${info.osId})` }, findings: [] }] };
   }
   const sbomFile = writeArtifacts(dir, text2, buildSbom(sections, info));
@@ -39180,7 +39224,7 @@ echo ok
 `;
 
 // src/scope.ts
-import fs10 from "node:fs";
+import fs11 from "node:fs";
 import net2 from "node:net";
 var BUILTIN = ["localhost", "127.0.0.1", "::1"].map((value) => ({
   value,
@@ -39190,7 +39234,7 @@ var BUILTIN = ["localhost", "127.0.0.1", "::1"].map((value) => ({
 }));
 function loadScope() {
   try {
-    const data = JSON.parse(fs10.readFileSync(SCOPE_FILE, "utf8"));
+    const data = JSON.parse(fs11.readFileSync(SCOPE_FILE, "utf8"));
     return Array.isArray(data?.targets) ? data.targets : [];
   } catch {
     return [];
@@ -39198,7 +39242,7 @@ function loadScope() {
 }
 function saveScope(entries) {
   ensureDirs();
-  fs10.writeFileSync(SCOPE_FILE, JSON.stringify({ targets: entries }, null, 2));
+  fs11.writeFileSync(SCOPE_FILE, JSON.stringify({ targets: entries }, null, 2));
 }
 function normalizeEntry(value) {
   const v = value.trim().toLowerCase();
@@ -39349,7 +39393,7 @@ function advisoryHost(scriptPath) {
 }
 
 // src/risk.ts
-import fs11 from "node:fs";
+import fs12 from "node:fs";
 import path9 from "node:path";
 import zlib from "node:zlib";
 var FEEDS_DIR = path9.join(HOME, "feeds");
@@ -39363,7 +39407,7 @@ var _epss;
 function loadKev() {
   if (_kev !== void 0) return _kev;
   try {
-    const raw = JSON.parse(fs11.readFileSync(KEV_FILE, "utf8"));
+    const raw = JSON.parse(fs12.readFileSync(KEV_FILE, "utf8"));
     const set2 = /* @__PURE__ */ new Set();
     for (const v of raw.vulnerabilities ?? []) if (v.cveID) set2.add(String(v.cveID).toUpperCase());
     _kev = set2.size ? set2 : null;
@@ -39376,7 +39420,7 @@ function loadEpss() {
   if (_epss !== void 0) return _epss;
   try {
     const map2 = /* @__PURE__ */ new Map();
-    for (const line of fs11.readFileSync(EPSS_FILE, "utf8").split(/\r?\n/)) {
+    for (const line of fs12.readFileSync(EPSS_FILE, "utf8").split(/\r?\n/)) {
       if (!line || line[0] === "#") continue;
       const [rawCve, rawEpss] = line.split(",");
       const cve = rawCve?.toUpperCase();
@@ -39418,14 +39462,38 @@ function scoreOne(f, kev, epss) {
   score = Math.min(100, Math.max(0, score));
   return { score, severity: f.severity, epss: epssVal, kev: isKev || void 0, factors };
 }
-function enrichRisk(findings) {
+function assetOf2(f, fallbackTarget) {
+  const l = f.location ?? {};
+  if (l.target) return l.target;
+  if (l.url) {
+    try {
+      return new URL(l.url).host;
+    } catch {
+      return l.url;
+    }
+  }
+  return fallbackTarget ?? "";
+}
+function enrichRisk(findings, fallbackTarget) {
   const kev = loadKev();
   const epss = loadEpss();
-  for (const f of findings) f.risk = scoreOne(f, kev, epss);
+  const assets = loadAssets();
+  for (const f of findings) {
+    const r = scoreOne(f, kev, epss);
+    const asset = assetOf2(f, fallbackTarget);
+    const crit = asset ? criticalityOf(asset, assets) : void 0;
+    if (crit && crit.criticality !== "normal") {
+      const m = criticalityMult(crit.criticality);
+      r.score = Math.min(100, Math.max(0, Math.round(r.score * m)));
+      r.assetCriticality = crit.criticality;
+      r.factors.push(`Activo de criticidad ${crit.criticality} (\xD7${m})`);
+    }
+    f.risk = r;
+  }
 }
 var fileDate = (p) => {
   try {
-    return fs11.statSync(p).mtime.toISOString().slice(0, 10);
+    return fs12.statSync(p).mtime.toISOString().slice(0, 10);
   } catch {
     return void 0;
   }
@@ -39444,13 +39512,13 @@ function feedStatus() {
 }
 async function refreshFeeds(which2 = "all") {
   ensureDirs();
-  fs11.mkdirSync(FEEDS_DIR, { recursive: true });
+  fs12.mkdirSync(FEEDS_DIR, { recursive: true });
   const out = [];
   if (which2 === "all" || which2 === "kev") {
     try {
       const res = await fetch(KEV_URL, { headers: { "User-Agent": "xolotl" } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      fs11.writeFileSync(KEV_FILE, Buffer.from(await res.arrayBuffer()));
+      fs12.writeFileSync(KEV_FILE, Buffer.from(await res.arrayBuffer()));
       _kev = void 0;
       out.push(`\u2713 KEV actualizado: ${loadKev()?.size ?? 0} CVE con explotaci\xF3n activa`);
     } catch (e) {
@@ -39462,7 +39530,7 @@ async function refreshFeeds(which2 = "all") {
       const res = await fetch(EPSS_URL, { headers: { "User-Agent": "xolotl" } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const csv = zlib.gunzipSync(Buffer.from(await res.arrayBuffer()));
-      fs11.writeFileSync(EPSS_FILE, csv);
+      fs12.writeFileSync(EPSS_FILE, csv);
       _epss = void 0;
       out.push(`\u2713 EPSS actualizado: ${loadEpss()?.size ?? 0} CVE con probabilidad`);
     } catch (e) {
@@ -39489,7 +39557,7 @@ function progress(extra, done, total, message) {
 }
 function resolveDir(p) {
   const abs = path10.resolve(p);
-  if (!fs12.existsSync(abs) || !fs12.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
+  if (!fs13.existsSync(abs) || !fs13.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
   return abs;
 }
 function summaryText(meta3, findings, top = 15) {
@@ -39515,7 +39583,7 @@ async function finishRun(meta3, outcomes, root) {
   meta3.tools.push(...outcomes.map((o) => o.run));
   const raw = outcomes.flatMap((o) => o.findings);
   const findings = finalize2(raw, root);
-  enrichRisk(findings);
+  enrichRisk(findings, meta3.target);
   saveRun(meta3, findings);
   return summaryText(meta3, findings);
 }
@@ -39769,8 +39837,8 @@ server.registerTool(
   async ({ output_path }) => {
     ensureDirs();
     const file2 = path10.resolve(output_path ?? path10.join(HOME, "xolotl-collect.sh"));
-    fs12.mkdirSync(path10.dirname(file2), { recursive: true });
-    fs12.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+    fs13.mkdirSync(path10.dirname(file2), { recursive: true });
+    fs13.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
     return text(
       [
         `Script escrito en ${file2} (${collector_default.split("\n").length} l\xEDneas, solo lectura: no instala ni cambia nada y no copia secretos).`,
@@ -39806,8 +39874,8 @@ server.registerTool(
     if (a.target && resolveMode(a.mode) === "advisory") {
       ensureDirs();
       const file2 = path10.join(HOME, "xolotl-collect.sh");
-      fs12.mkdirSync(path10.dirname(file2), { recursive: true });
-      fs12.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+      fs13.mkdirSync(path10.dirname(file2), { recursive: true });
+      fs13.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
       return text(advisoryHost(file2));
     }
     const timeoutMs = minutes(a.timeout_minutes ?? 15);
@@ -39824,8 +39892,8 @@ server.registerTool(
         via = `ssh ${a.target}`;
       } else {
         const file2 = path10.resolve(a.collected_file);
-        if (!fs12.existsSync(file2)) return fail(`No existe ${file2}`);
-        collected = fs12.readFileSync(file2, "utf8");
+        if (!fs13.existsSync(file2)) return fail(`No existe ${file2}`);
+        collected = fs13.readFileSync(file2, "utf8");
         via = file2;
       }
     } catch (e) {
@@ -40138,7 +40206,8 @@ server.registerTool(
         return text(
           rows2.map((r) => {
             const sev = SEVERITIES.filter((x) => r.bySeverity[x]).map((x) => `${r.bySeverity[x]}${x[0].toUpperCase()}`).join(" ");
-            return `${r.asset} \xB7 ${r.total} hallazgos (${sev}) \xB7 ${r.categories.join(",")} \xB7 visto ${r.firstSeen.slice(0, 10)}\u2192${r.lastSeen.slice(0, 10)}`;
+            const crit = r.criticality ? ` \xB7 criticidad ${r.criticality}` : "";
+            return `${r.asset} \xB7 ${r.total} hallazgos (${sev}) \xB7 ${r.categories.join(",")}${crit} \xB7 visto ${r.firstSeen.slice(0, 10)}\u2192${r.lastSeen.slice(0, 10)}`;
           }).join("\n")
         );
       }
@@ -40173,6 +40242,39 @@ server.registerTool(
   }
 );
 server.registerTool(
+  "asset_criticality",
+  {
+    title: "Criticidad de negocio por activo",
+    description: "Fija cu\xE1nto pesa cada activo para el negocio, para que la prioridad de riesgo lo tenga en cuenta: la misma vulnerabilidad urge m\xE1s en producci\xF3n que en un entorno de pruebas. Niveles: critica (\xD71.15), alta (\xD71.07), normal (\xD71.0), baja (\xD70.85). Afecta a las corridas nuevas; reescanea para recalcular las previas. action=list muestra lo fijado; set necesita asset y level; clear quita el ajuste.",
+    inputSchema: {
+      action: external_exports.enum(["list", "set", "clear"]),
+      asset: external_exports.string().optional().describe("Activo tal como aparece en el inventario: host, usuario@host, dominio o URL (para set/clear)"),
+      level: external_exports.enum(CRITICALITY).optional().describe("Nivel de criticidad (obligatorio para set)"),
+      note: external_exports.string().optional().describe("Por qu\xE9 (p. ej. 'maneja datos de clientes')")
+    },
+    annotations: { readOnlyHint: false }
+  },
+  async (a) => {
+    try {
+      if (a.action === "set") {
+        if (!a.asset?.trim() || !a.level) return fail("Para set se necesitan asset y level.");
+        const e = setCriticality(a.asset.trim(), a.level, a.note);
+        return text(`Criticidad de ${a.asset.trim()} = ${e.criticality}${e.note ? ` (${e.note})` : ""}. Aplica a las corridas nuevas.`);
+      }
+      if (a.action === "clear") {
+        if (!a.asset?.trim()) return fail("Falta asset.");
+        return text(clearCriticality(a.asset.trim()) ? `Quitada la criticidad de ${a.asset.trim()} (vuelve a normal).` : `${a.asset.trim()} no ten\xEDa criticidad fijada.`);
+      }
+      const db = loadAssets();
+      const keys = Object.keys(db).sort();
+      if (!keys.length) return text("Ning\xFAn activo tiene criticidad fijada (todos cuentan como 'normal'). F\xEDjala con action=set.");
+      return text(["Criticidad de activos:", ...keys.map((k) => `- ${k} \u2014 ${db[k].criticality}${db[k].note ? `: ${db[k].note}` : ""} (${db[k].at.slice(0, 10)})`)].join("\n"));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
   "report_generate",
   {
     title: "Generar informe",
@@ -40191,8 +40293,8 @@ server.registerTool(
       const incl = a.include_suppressed ?? true;
       const body = fmt === "md" ? toMarkdown(meta3, findings, incl) : fmt === "html" ? toHtml(meta3, findings, incl) : JSON.stringify(fmt === "sarif" ? toSarif(meta3, findings) : { meta: meta3, findings }, null, 2);
       const file2 = path10.resolve(a.output_path ?? path10.join(runDir(meta3.id), `informe.${fmt}`));
-      fs12.mkdirSync(path10.dirname(file2), { recursive: true });
-      fs12.writeFileSync(file2, body);
+      fs13.mkdirSync(path10.dirname(file2), { recursive: true });
+      fs13.writeFileSync(file2, body);
       return text(`Informe ${fmt.toUpperCase()} escrito en ${file2} (${meta3.summary.total} hallazgos activos).`);
     } catch (e) {
       return fail(e.message);

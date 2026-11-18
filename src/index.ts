@@ -31,6 +31,7 @@ import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setT
 import { findingHistory, inventorySummary, listAssets, queryFindings } from "./inventory.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
+import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
 
 const server = new McpServer(
   { name: "xolotl", version: "0.1.0" },
@@ -86,7 +87,7 @@ async function finishRun(meta: RunMeta, outcomes: Outcome[], root: string | null
   meta.tools.push(...outcomes.map((o) => o.run));
   const raw: RawFinding[] = outcomes.flatMap((o) => o.findings);
   const findings = finalize(raw, root);
-  enrichRisk(findings); // prioridad por severidad + EPSS/KEV (si hay feeds locales)
+  enrichRisk(findings, meta.target); // prioridad: CVSS + EPSS/KEV (si hay feeds) × criticidad del activo
   saveRun(meta, findings);
   return summaryText(meta, findings);
 }
@@ -767,7 +768,8 @@ server.registerTool(
           rows
             .map((r) => {
               const sev = SEVERITIES.filter((x) => r.bySeverity[x]).map((x) => `${r.bySeverity[x]}${x[0].toUpperCase()}`).join(" ");
-              return `${r.asset} · ${r.total} hallazgos (${sev}) · ${r.categories.join(",")} · visto ${r.firstSeen.slice(0, 10)}→${r.lastSeen.slice(0, 10)}`;
+              const crit = r.criticality ? ` · criticidad ${r.criticality}` : "";
+              return `${r.asset} · ${r.total} hallazgos (${sev}) · ${r.categories.join(",")}${crit} · visto ${r.firstSeen.slice(0, 10)}→${r.lastSeen.slice(0, 10)}`;
             })
             .join("\n"),
         );
@@ -798,6 +800,41 @@ server.registerTool(
         return `${r.severity} ${r.category}${pkg} — ${r.title}${cve} · ${r.asset} [${r.tool_used}] {${r.status}}${n} · ${r.fingerprint}`;
       });
       return text([`${rows.length} hallazgo(s) en el inventario:`, ...out].join("\n"));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "asset_criticality",
+  {
+    title: "Criticidad de negocio por activo",
+    description:
+      "Fija cuánto pesa cada activo para el negocio, para que la prioridad de riesgo lo tenga en cuenta: la misma vulnerabilidad urge más en producción que en un entorno de pruebas. Niveles: critica (×1.15), alta (×1.07), normal (×1.0), baja (×0.85). Afecta a las corridas nuevas; reescanea para recalcular las previas. action=list muestra lo fijado; set necesita asset y level; clear quita el ajuste.",
+    inputSchema: {
+      action: z.enum(["list", "set", "clear"]),
+      asset: z.string().optional().describe("Activo tal como aparece en el inventario: host, usuario@host, dominio o URL (para set/clear)"),
+      level: z.enum(CRITICALITY).optional().describe("Nivel de criticidad (obligatorio para set)"),
+      note: z.string().optional().describe("Por qué (p. ej. 'maneja datos de clientes')"),
+    },
+    annotations: { readOnlyHint: false },
+  },
+  async (a) => {
+    try {
+      if (a.action === "set") {
+        if (!a.asset?.trim() || !a.level) return fail("Para set se necesitan asset y level.");
+        const e = setCriticality(a.asset.trim(), a.level as Criticality, a.note);
+        return text(`Criticidad de ${a.asset.trim()} = ${e.criticality}${e.note ? ` (${e.note})` : ""}. Aplica a las corridas nuevas.`);
+      }
+      if (a.action === "clear") {
+        if (!a.asset?.trim()) return fail("Falta asset.");
+        return text(clearCriticality(a.asset.trim()) ? `Quitada la criticidad de ${a.asset.trim()} (vuelve a normal).` : `${a.asset.trim()} no tenía criticidad fijada.`);
+      }
+      const db = loadAssets();
+      const keys = Object.keys(db).sort();
+      if (!keys.length) return text("Ningún activo tiene criticidad fijada (todos cuentan como 'normal'). Fíjala con action=set.");
+      return text(["Criticidad de activos:", ...keys.map((k) => `- ${k} — ${db[k].criticality}${db[k].note ? `: ${db[k].note}` : ""} (${db[k].at.slice(0, 10)})`)].join("\n"));
     } catch (e) {
       return fail((e as Error).message);
     }

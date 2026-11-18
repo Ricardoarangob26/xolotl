@@ -38,6 +38,7 @@ export interface RiskScore {
   severity: Severity; // severidad base usada
   epss?: number; // 0..1, probabilidad de explotación a 30 días (FIRST/EPSS)
   kev?: boolean; // figura en el catálogo CISA KEV
+  assetCriticality?: string; // criticidad de negocio del activo, si el usuario la fijó
   factors: string[]; // por qué, en lenguaje legible
 }
 
@@ -256,13 +257,12 @@ export function where(f: Finding): string {
   return l.commit ? `${file} @${l.commit.slice(0, 8)}` : file;
 }
 
-/** Prioridad legible: "riesgo 95 KEV" o "riesgo 76 (EPSS 91%)"; vacío si no aporta sobre la severidad. */
+/** Prioridad legible: "riesgo 95 KEV", "riesgo 76 (EPSS 91%)" o "riesgo 58 (activo critica)"; vacío si no aporta sobre la severidad. */
 export function riskTag(f: Finding): string {
   const r = f.risk;
   if (!r) return "";
-  if (r.kev) return ` · riesgo ${r.score} KEV`;
-  if (r.epss !== undefined) return ` · riesgo ${r.score} (EPSS ${(r.epss * 100).toFixed(0)}%)`;
-  return "";
+  const parts = [r.kev ? "KEV" : "", r.epss !== undefined ? `EPSS ${(r.epss * 100).toFixed(0)}%` : "", r.assetCriticality ? `activo ${r.assetCriticality}` : ""].filter(Boolean);
+  return parts.length ? ` · riesgo ${r.score} (${parts.join(", ")})` : "";
 }
 
 export function oneLine(f: Finding): string {
