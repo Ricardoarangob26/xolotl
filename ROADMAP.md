@@ -48,7 +48,7 @@ copiar agentes, sino que cada dominio defensivo o de evaluación tenga motor, sk
 | Informes (`report-generator`) | ✅ `report_generate` (técnico) | Resumen ejecutivo → Fase 1.5 |
 | Memoria (`/memory`, `findings.sh`, `doctor.sh`) | ✅ BD SQLite, `inventory`, `xolotl_doctor` | Traspaso de compromiso → Fase 1.5 |
 | Recomendación (`/recommend`, `/agents-for`) | 🟡 las skills se activan solas | Siguiente paso sugerido → Fase 1.5 |
-| Puntuación de riesgo (`risk-scorer`) | ❌ solo severidad del motor | **Fase 1.5** |
+| Puntuación de riesgo (`risk-scorer`) | ✅ EPSS + CISA KEV sobre la severidad (`risk_feeds`) | — |
 | Cumplimiento (`compliance-mapper`, `stig-analyst`) | 🟡 CWE por hallazgo | Mapeo a marcos → Fase 1.5; STIG/CIS → Fase 2 |
 | Validación (`poc-validator`) | 🟡 Nuclei confirma por plantilla | Revalidación no destructiva → Fase 1.5 |
 | Planeación (`engagement-planner`, `attack-planner`) | 🟡 `dast_scope` (alcance) | Reglas de enfrentamiento + ATT&CK → Fase 1.5 |
@@ -78,7 +78,7 @@ Es lo más barato y lo que más valor agrega: todo lo que ya se escanea gana con
 
 | Tarea | Qué agrega | Inspiración |
 |---|---|---|
-| **Puntuación de riesgo** | Vector CVSS 3.1/4.0, EPSS y CISA KEV en cada hallazgo con CVE, con feeds cacheados en `~/.xolotl/feeds` (descarga opcional, funciona sin red). Prioridad = severidad × explotabilidad × criticidad del activo (del `inventory`). | `risk-scorer` |
+| **Puntuación de riesgo** ✅ | EPSS (probabilidad de explotación) y CISA KEV (explotación activa) en cada hallazgo con CVE, con feeds cacheados en `~/.xolotl/feeds` (descarga opcional vía `risk_feeds`, funciona sin red). Prioridad = severidad × explotabilidad, visible en `findings_query` y en una tabla «Prioridad por riesgo» del informe que reordena entre severidades. Pendiente: vector CVSS desde los parsers y factor de criticidad del activo. | `risk-scorer` |
 | **Mapeo a marcos** | De CWE/regla a PCI DSS 4.0, NIST 800-53/CSF 2.0, ISO 27001:2022, CIS Controls v8 y OWASP Top 10/ASVS. Informe de brechas por control en `report_generate`. | `compliance-mapper` |
 | **Mapeo a MITRE ATT&CK** | Técnica asociada por hallazgo (útil para detección y para planear). | `engagement-planner` |
 | **Plan de compromiso** | Skill `appsec-engagement`: reglas de enfrentamiento, alcance y ventanas sobre `dast_scope`, con plantilla exportable. | `engagement-planner` |

@@ -30,6 +30,7 @@ import { addScope, builtinScope, expandTargets, loadScope, matchScope, removeSco
 import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage } from "./store.js";
 import { findingHistory, inventorySummary, listAssets, queryFindings } from "./inventory.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
+import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 
 const server = new McpServer(
   { name: "xolotl", version: "0.1.0" },
@@ -85,6 +86,7 @@ async function finishRun(meta: RunMeta, outcomes: Outcome[], root: string | null
   meta.tools.push(...outcomes.map((o) => o.run));
   const raw: RawFinding[] = outcomes.flatMap((o) => o.findings);
   const findings = finalize(raw, root);
+  enrichRisk(findings); // prioridad por severidad + EPSS/KEV (si hay feeds locales)
   saveRun(meta, findings);
   return summaryText(meta, findings);
 }
@@ -111,7 +113,42 @@ server.registerTool(
     );
     const mode = defaultMode();
     const modeLine = `Modo por defecto: ${mode === "advisory" ? "advisory (Tier 1 — no se conecta a objetivos; entrega comandos)" : "execute (Tier 2 — escanea directamente)"}${process.env.XOLOTL_MODE ? " [XOLOTL_MODE]" : ""}`;
-    return text([`Carpeta de trabajo: ${HOME}`, modeLine, ...rows, `Alcance DAST: ${SCOPE_FILE} (${loadScope().length} objetivos autorizados + localhost)`].join("\n"));
+    const fs2 = feedStatus();
+    const feedsLine =
+      fs2.kev || fs2.epss
+        ? `Feeds de riesgo: KEV ${fs2.kev ? `${fs2.kevCount} CVE (${fs2.kevAt})` : "no descargado"} · EPSS ${fs2.epss ? `${fs2.epssCount} CVE (${fs2.epssAt})` : "no descargado"}`
+        : "Feeds de riesgo: sin descargar (la prioridad usa solo severidad; corre risk_feeds para añadir EPSS/KEV)";
+    return text([`Carpeta de trabajo: ${HOME}`, modeLine, feedsLine, ...rows, `Alcance DAST: ${SCOPE_FILE} (${loadScope().length} objetivos autorizados + localhost)`].join("\n"));
+  },
+);
+
+server.registerTool(
+  "risk_feeds",
+  {
+    title: "Feeds de priorización (EPSS / CISA KEV)",
+    description:
+      "Gestiona los feeds locales que enriquecen la prioridad de los hallazgos con CVE. action=status muestra qué hay descargado; action=refresh descarga/actualiza EPSS (probabilidad de explotación, FIRST) y CISA KEV (explotación activa) a ~/.xolotl/feeds. La descarga es opcional: sin feeds, la prioridad se calcula solo con la severidad. Afecta a las corridas nuevas.",
+    inputSchema: {
+      action: z.enum(["status", "refresh"]).optional().describe("status (por defecto) o refresh para descargar"),
+      feed: z.enum(["all", "kev", "epss"]).optional().describe("Qué feed actualizar en refresh (por defecto all)"),
+    },
+    annotations: { openWorldHint: true },
+  },
+  async (a) => {
+    if ((a.action ?? "status") === "refresh") {
+      const lines = await refreshFeeds(a.feed ?? "all");
+      return text(["Actualización de feeds de riesgo:", ...lines, "", "Las próximas corridas usarán estos datos. Reescanea para recalcular hallazgos previos."].join("\n"));
+    }
+    const s = feedStatus();
+    return text(
+      [
+        `Carpeta de feeds: ${HOME}/feeds`,
+        `CISA KEV:  ${s.kev ? `✓ ${s.kevCount} CVE con explotación activa (actualizado ${s.kevAt})` : "✗ no descargado"}`,
+        `EPSS:      ${s.epss ? `✓ ${s.epssCount} CVE con probabilidad (actualizado ${s.epssAt})` : "✗ no descargado"}`,
+        "",
+        s.kev || s.epss ? "La prioridad de los hallazgos con CVE usa estos feeds." : "Sin feeds: la prioridad usa solo la severidad. Corre risk_feeds con action=refresh para añadirlos.",
+      ].join("\n"),
+    );
   },
 );
 

@@ -20,6 +20,19 @@ export interface Location {
   commit?: string;
 }
 
+/**
+ * Prioridad calculada a partir de la severidad base y, cuando el hallazgo tiene CVE,
+ * de los feeds locales EPSS (probabilidad de explotación) y CISA KEV (explotación activa).
+ * Se puebla tras deduplicar; ver `risk.ts`.
+ */
+export interface RiskScore {
+  score: number; // 0..100, prioridad para remediar
+  severity: Severity; // severidad base usada
+  epss?: number; // 0..1, probabilidad de explotación a 30 días (FIRST/EPSS)
+  kev?: boolean; // figura en el catálogo CISA KEV
+  factors: string[]; // por qué, en lenguaje legible
+}
+
 export interface Finding {
   id: string;
   fingerprint: string;
@@ -39,6 +52,7 @@ export interface Finding {
   snippet?: string;
   evidence?: string;
   remediation?: string;
+  risk?: RiskScore;
   triage?: { status: TriageStatus; note?: string; at: string };
 }
 
@@ -232,9 +246,18 @@ export function where(f: Finding): string {
   return l.commit ? `${file} @${l.commit.slice(0, 8)}` : file;
 }
 
+/** Prioridad legible: "riesgo 95 KEV" o "riesgo 76 (EPSS 91%)"; vacío si no aporta sobre la severidad. */
+export function riskTag(f: Finding): string {
+  const r = f.risk;
+  if (!r) return "";
+  if (r.kev) return ` · riesgo ${r.score} KEV`;
+  if (r.epss !== undefined) return ` · riesgo ${r.score} (EPSS ${(r.epss * 100).toFixed(0)}%)`;
+  return "";
+}
+
 export function oneLine(f: Finding): string {
   const pkg = f.package ? ` ${f.package.name}@${f.package.version ?? "?"}${f.package.fixedVersion ? ` (fix: ${f.package.fixedVersion})` : ""}` : "";
   const status = f.triage && f.triage.status !== "open" ? ` {${f.triage.status}}` : "";
   const title = f.title.length > 110 ? f.title.slice(0, 110) + "…" : f.title;
-  return `${f.id} [${f.severity}] ${f.category}${pkg} — ${title} · ${where(f)} [${f.tools.join(", ")}]${status}`;
+  return `${f.id} [${f.severity}] ${f.category}${pkg} — ${title} · ${where(f)} [${f.tools.join(", ")}]${riskTag(f)}${status}`;
 }

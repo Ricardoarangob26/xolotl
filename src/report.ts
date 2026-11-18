@@ -1,6 +1,21 @@
 import { CATEGORIES, Finding, SEVERITIES, where } from "./findings.js";
 import { isSuppressed, RunMeta } from "./store.js";
 
+/** Hallazgos activos ordenados por prioridad de riesgo (desc), solo los enriquecidos por feeds. */
+function topByRisk(findings: Finding[], n = 10): Finding[] {
+  return findings
+    .filter((f) => !isSuppressed(f) && f.risk && (f.risk.kev || f.risk.epss !== undefined))
+    .sort((a, b) => (b.risk!.score - a.risk!.score) || a.id.localeCompare(b.id))
+    .slice(0, n);
+}
+
+const riskCell = (f: Finding): string => {
+  const r = f.risk;
+  if (!r) return "—";
+  const tags = [r.kev ? "KEV" : "", r.epss !== undefined ? `EPSS ${(r.epss * 100).toFixed(0)}%` : ""].filter(Boolean).join(", ");
+  return `${r.score}${tags ? ` (${tags})` : ""}`;
+};
+
 const SEV_ES: Record<string, string> = { critical: "Crítica", high: "Alta", medium: "Media", low: "Baja", info: "Informativa" };
 const CAT_ES: Record<string, string> = {
   sast: "Código (SAST)",
@@ -31,6 +46,7 @@ function details(f: Finding): string[] {
   if (f.package) rows.push(`- **Paquete:** ${f.package.name}@${f.package.version ?? "?"}${f.package.fixedVersion ? ` → actualizar a ${f.package.fixedVersion}` : " (sin versión corregida publicada)"}`);
   const ids = [...(f.cve ?? []), ...(f.cwe ?? [])];
   if (ids.length) rows.push(`- **Referencias:** ${ids.join(", ")}`);
+  if (f.risk && (f.risk.kev || f.risk.epss !== undefined)) rows.push(`- **Prioridad de riesgo:** ${f.risk.score}/100 — ${f.risk.factors.join("; ")}`);
   if (f.triage) rows.push(`- **Estado:** ${STATUS_ES[f.triage.status]}${f.triage.note ? ` — ${f.triage.note}` : ""}`);
   return rows;
 }
@@ -52,6 +68,13 @@ export function toMarkdown(meta: RunMeta, findings: Finding[], includeSuppressed
   out.push("", "### Herramientas", "", "| Herramienta | Versión | Estado | Hallazgos | Nota |", "|---|---|---|---:|---|");
   for (const t of meta.tools) out.push(`| ${t.tool} | ${t.version ?? "—"} | ${t.status} | ${t.count ?? 0} | ${trunc(t.message, 120).replace(/\|/g, "/").replace(/\n/g, " ")} |`);
   out.push("");
+
+  const priority = topByRisk(active);
+  if (priority.length) {
+    out.push("## Prioridad por riesgo", "", "Orden por explotabilidad real (EPSS/CISA KEV), no solo por severidad.", "", "| # | Riesgo | Severidad | Hallazgo | Dónde |", "|---|---|---|---|---|");
+    for (const f of priority) out.push(`| ${f.id} | ${riskCell(f)} | ${SEV_ES[f.severity]} | ${trunc(f.title, 70).replace(/\|/g, "/")} | \`${where(f)}\` |`);
+    out.push("");
+  }
 
   for (const sev of SEVERITIES) {
     const group = active.filter((f) => f.severity === sev);
@@ -100,6 +123,10 @@ ${f.remediation ? `<p><b>Remediación:</b> ${esc(trunc(f.remediation, 800))}</p>
   const tools = meta.tools
     .map((t) => `<tr><td>${t.tool}</td><td>${t.version ?? "—"}</td><td>${t.status}</td><td>${t.count ?? 0}</td><td>${esc(trunc(t.message, 160))}</td></tr>`)
     .join("");
+  const priority = topByRisk(active);
+  const priorityRows = priority
+    .map((f) => `<tr><td><code>${f.id}</code></td><td><b>${esc(riskCell(f))}</b></td><td>${SEV_ES[f.severity]}</td><td>${esc(trunc(f.title, 90))}</td><td><code>${esc(where(f))}</code></td></tr>`)
+    .join("");
 
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Informe de seguridad</title><style>
@@ -117,6 +144,7 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:
 <h1>Informe de seguridad — ${esc(meta.target)}</h1><div class="meta">Corrida ${esc(meta.id)} · ${esc(meta.kind)} · ${meta.startedAt.replace("T", " ").slice(0, 16)} UTC · ${s.total} hallazgos activos${s.suppressed ? `, ${s.suppressed} descartados` : ""}</div>
 <div class="tiles">${tiles}</div>
 <h2>Herramientas</h2><table><tr><th>Herramienta</th><th>Versión</th><th>Estado</th><th>Hallazgos</th><th>Nota</th></tr>${tools}</table>
+${priorityRows ? `<h2>Prioridad por riesgo</h2><p class="meta">Orden por explotabilidad real (EPSS/CISA KEV), no solo por severidad.</p><table><tr><th>#</th><th>Riesgo</th><th>Severidad</th><th>Hallazgo</th><th>Dónde</th></tr>${priorityRows}</table>` : ""}
 <h2>Hallazgos</h2>${cards || "<p>Sin hallazgos activos.</p>"}
 ${suppressedRows ? `<h2>Descartados en el triage</h2><table><tr><th>ID</th><th>Severidad</th><th>Hallazgo</th><th>Estado</th><th>Nota</th></tr>${suppressedRows}</table>` : ""}
 </main></body></html>`;

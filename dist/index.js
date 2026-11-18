@@ -3259,8 +3259,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path10) {
-      let input2 = path10;
+    function removeDotSegments(path11) {
+      let input2 = path11;
       const output2 = [];
       let nextSlash = -1;
       let len = 0;
@@ -3334,11 +3334,11 @@ var require_utils = __commonJS({
       }
       return output2.join("");
     }
-    function removeDotSegmentsRelative(path10) {
-      if (path10 === "" || path10[0] === "/") {
-        return removeDotSegments(path10);
+    function removeDotSegmentsRelative(path11) {
+      if (path11 === "" || path11[0] === "/") {
+        return removeDotSegments(path11);
       }
-      const segments = path10.split("/");
+      const segments = path11.split("/");
       const last = segments.length - 1;
       const output2 = [];
       let trailingDirectory = false;
@@ -3701,8 +3701,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path10 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path10 && path10 !== "/" ? path10 : void 0;
+        const path11 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path11 && path11 !== "/" ? path11 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7239,12 +7239,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs12, exportName) {
+    function addFormats(ajv, list, fs13, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs12[f]);
+        ajv.addFormat(f, fs13[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7253,8 +7253,8 @@ var require_dist = __commonJS({
 });
 
 // src/index.ts
-import fs11 from "node:fs";
-import path9 from "node:path";
+import fs12 from "node:fs";
+import path10 from "node:path";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -7630,8 +7630,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path10, errorMaps, issueData } = params;
-  const fullPath = [...path10, ...issueData.path || []];
+  const { data, path: path11, errorMaps, issueData } = params;
+  const fullPath = [...path11, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7746,11 +7746,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path10, key) {
+  constructor(parent, value, path11, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path10;
+    this._path = path11;
     this._key = key;
   }
   get path() {
@@ -11706,10 +11706,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path10) {
-  if (!path10)
+function getElementAtPath(obj, path11) {
+  if (!path11)
     return obj;
-  return path10.reduce((acc, key) => acc?.[key], obj);
+  return path11.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -12049,11 +12049,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path10, issues) {
+function prefixIssues(path11, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path10);
+    iss.path.unshift(path11);
     return iss;
   });
 }
@@ -12515,16 +12515,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path10 = []) => {
+  const processError = (error63, path11 = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path11, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else {
-        const fullpath = [...path10, ...issue2.path];
+        const fullpath = [...path11, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -12563,17 +12563,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path10 = []) => {
+  const processError = (error63, path11 = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path11, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else {
-        const fullpath = [...path10, ...issue2.path];
+        const fullpath = [...path11, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -12612,8 +12612,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path10 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path10) {
+  const path11 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path11) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -28164,11 +28164,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path10) {
-  if (path10.length === 0) {
+function getDotPath(path11) {
+  if (path11.length === 0) {
     return "object root";
   }
-  return path10.reduce((acc, seg, index) => {
+  return path11.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -30395,13 +30395,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path10 = ref.slice(1).split("/").filter(Boolean);
-  if (path10.length === 0) {
+  const path11 = ref.slice(1).split("/").filter(Boolean);
+  if (path11.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path10[0] === defsKey) {
-    const key = path10[1] === void 0 ? void 0 : decodeJSONPointerSegment(path10[1]);
+  if (path11[0] === defsKey) {
+    const key = path11[1] === void 0 ? void 0 : decodeJSONPointerSegment(path11[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -37047,11 +37047,18 @@ function where(f) {
   const file2 = l.file ? `${l.file}${l.startLine ? `:${l.startLine}` : ""}` : l.target ?? "";
   return l.commit ? `${file2} @${l.commit.slice(0, 8)}` : file2;
 }
+function riskTag(f) {
+  const r = f.risk;
+  if (!r) return "";
+  if (r.kev) return ` \xB7 riesgo ${r.score} KEV`;
+  if (r.epss !== void 0) return ` \xB7 riesgo ${r.score} (EPSS ${(r.epss * 100).toFixed(0)}%)`;
+  return "";
+}
 function oneLine(f) {
   const pkg = f.package ? ` ${f.package.name}@${f.package.version ?? "?"}${f.package.fixedVersion ? ` (fix: ${f.package.fixedVersion})` : ""}` : "";
   const status = f.triage && f.triage.status !== "open" ? ` {${f.triage.status}}` : "";
   const title = f.title.length > 110 ? f.title.slice(0, 110) + "\u2026" : f.title;
-  return `${f.id} [${f.severity}] ${f.category}${pkg} \u2014 ${title} \xB7 ${where(f)} [${f.tools.join(", ")}]${status}`;
+  return `${f.id} [${f.severity}] ${f.category}${pkg} \u2014 ${title} \xB7 ${where(f)} [${f.tools.join(", ")}]${riskTag(f)}${status}`;
 }
 
 // src/installer.ts
@@ -37520,6 +37527,15 @@ function setTriage(findings, status, note) {
 }
 
 // src/report.ts
+function topByRisk(findings, n = 10) {
+  return findings.filter((f) => !isSuppressed(f) && f.risk && (f.risk.kev || f.risk.epss !== void 0)).sort((a, b) => b.risk.score - a.risk.score || a.id.localeCompare(b.id)).slice(0, n);
+}
+var riskCell = (f) => {
+  const r = f.risk;
+  if (!r) return "\u2014";
+  const tags = [r.kev ? "KEV" : "", r.epss !== void 0 ? `EPSS ${(r.epss * 100).toFixed(0)}%` : ""].filter(Boolean).join(", ");
+  return `${r.score}${tags ? ` (${tags})` : ""}`;
+};
 var SEV_ES = { critical: "Cr\xEDtica", high: "Alta", medium: "Media", low: "Baja", info: "Informativa" };
 var CAT_ES = {
   sast: "C\xF3digo (SAST)",
@@ -37548,6 +37564,7 @@ function details(f) {
   if (f.package) rows.push(`- **Paquete:** ${f.package.name}@${f.package.version ?? "?"}${f.package.fixedVersion ? ` \u2192 actualizar a ${f.package.fixedVersion}` : " (sin versi\xF3n corregida publicada)"}`);
   const ids = [...f.cve ?? [], ...f.cwe ?? []];
   if (ids.length) rows.push(`- **Referencias:** ${ids.join(", ")}`);
+  if (f.risk && (f.risk.kev || f.risk.epss !== void 0)) rows.push(`- **Prioridad de riesgo:** ${f.risk.score}/100 \u2014 ${f.risk.factors.join("; ")}`);
   if (f.triage) rows.push(`- **Estado:** ${STATUS_ES[f.triage.status]}${f.triage.note ? ` \u2014 ${f.triage.note}` : ""}`);
   return rows;
 }
@@ -37568,6 +37585,12 @@ function toMarkdown(meta3, findings, includeSuppressed) {
   out.push("", "### Herramientas", "", "| Herramienta | Versi\xF3n | Estado | Hallazgos | Nota |", "|---|---|---|---:|---|");
   for (const t of meta3.tools) out.push(`| ${t.tool} | ${t.version ?? "\u2014"} | ${t.status} | ${t.count ?? 0} | ${trunc(t.message, 120).replace(/\|/g, "/").replace(/\n/g, " ")} |`);
   out.push("");
+  const priority = topByRisk(active);
+  if (priority.length) {
+    out.push("## Prioridad por riesgo", "", "Orden por explotabilidad real (EPSS/CISA KEV), no solo por severidad.", "", "| # | Riesgo | Severidad | Hallazgo | D\xF3nde |", "|---|---|---|---|---|");
+    for (const f of priority) out.push(`| ${f.id} | ${riskCell(f)} | ${SEV_ES[f.severity]} | ${trunc(f.title, 70).replace(/\|/g, "/")} | \`${where(f)}\` |`);
+    out.push("");
+  }
   for (const sev of SEVERITIES) {
     const group = active.filter((f) => f.severity === sev);
     if (!group.length) continue;
@@ -37603,6 +37626,8 @@ ${f.remediation ? `<p><b>Remediaci\xF3n:</b> ${esc2(trunc(f.remediation, 800))}<
   const suppressedRows = includeSuppressed ? findings.filter(isSuppressed).map((f) => `<tr><td>${f.id}</td><td>${SEV_ES[f.severity]}</td><td>${esc2(f.title)}</td><td>${STATUS_ES[f.triage.status]}</td><td>${esc2(f.triage.note ?? "")}</td></tr>`).join("") : "";
   const tiles = SEVERITIES.map((sev) => `<div class="tile ${sev}"><b>${s.bySeverity[sev]}</b><span>${SEV_ES[sev]}</span></div>`).join("");
   const tools = meta3.tools.map((t) => `<tr><td>${t.tool}</td><td>${t.version ?? "\u2014"}</td><td>${t.status}</td><td>${t.count ?? 0}</td><td>${esc2(trunc(t.message, 160))}</td></tr>`).join("");
+  const priority = topByRisk(active);
+  const priorityRows = priority.map((f) => `<tr><td><code>${f.id}</code></td><td><b>${esc2(riskCell(f))}</b></td><td>${SEV_ES[f.severity]}</td><td>${esc2(trunc(f.title, 90))}</td><td><code>${esc2(where(f))}</code></td></tr>`).join("");
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Informe de seguridad</title><style>
 :root{--bg:#f7f7f5;--fg:#1d1d1b;--mut:#6b6b66;--card:#fff;--line:#e3e2dd;--critical:#9b1c1c;--high:#c2410c;--medium:#a16207;--low:#2563eb;--info:#6b7280}
@@ -37619,6 +37644,7 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:
 <h1>Informe de seguridad \u2014 ${esc2(meta3.target)}</h1><div class="meta">Corrida ${esc2(meta3.id)} \xB7 ${esc2(meta3.kind)} \xB7 ${meta3.startedAt.replace("T", " ").slice(0, 16)} UTC \xB7 ${s.total} hallazgos activos${s.suppressed ? `, ${s.suppressed} descartados` : ""}</div>
 <div class="tiles">${tiles}</div>
 <h2>Herramientas</h2><table><tr><th>Herramienta</th><th>Versi\xF3n</th><th>Estado</th><th>Hallazgos</th><th>Nota</th></tr>${tools}</table>
+${priorityRows ? `<h2>Prioridad por riesgo</h2><p class="meta">Orden por explotabilidad real (EPSS/CISA KEV), no solo por severidad.</p><table><tr><th>#</th><th>Riesgo</th><th>Severidad</th><th>Hallazgo</th><th>D\xF3nde</th></tr>${priorityRows}</table>` : ""}
 <h2>Hallazgos</h2>${cards || "<p>Sin hallazgos activos.</p>"}
 ${suppressedRows ? `<h2>Descartados en el triage</h2><table><tr><th>ID</th><th>Severidad</th><th>Hallazgo</th><th>Estado</th><th>Nota</th></tr>${suppressedRows}</table>` : ""}
 </main></body></html>`;
@@ -39276,6 +39302,130 @@ function advisoryHost(scriptPath) {
   ].join("\n");
 }
 
+// src/risk.ts
+import fs11 from "node:fs";
+import path9 from "node:path";
+import zlib from "node:zlib";
+var FEEDS_DIR = path9.join(HOME, "feeds");
+var KEV_FILE = path9.join(FEEDS_DIR, "kev.json");
+var EPSS_FILE = path9.join(FEEDS_DIR, "epss.csv");
+var KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json";
+var EPSS_URL = "https://epss.cyentia.com/epss_scores-current.csv.gz";
+var SEV_BASE = { critical: 9.5, high: 8, medium: 5.5, low: 3, info: 0.5 };
+var _kev;
+var _epss;
+function loadKev() {
+  if (_kev !== void 0) return _kev;
+  try {
+    const raw = JSON.parse(fs11.readFileSync(KEV_FILE, "utf8"));
+    const set2 = /* @__PURE__ */ new Set();
+    for (const v of raw.vulnerabilities ?? []) if (v.cveID) set2.add(String(v.cveID).toUpperCase());
+    _kev = set2.size ? set2 : null;
+  } catch {
+    _kev = null;
+  }
+  return _kev;
+}
+function loadEpss() {
+  if (_epss !== void 0) return _epss;
+  try {
+    const map2 = /* @__PURE__ */ new Map();
+    for (const line of fs11.readFileSync(EPSS_FILE, "utf8").split(/\r?\n/)) {
+      if (!line || line[0] === "#") continue;
+      const [rawCve, rawEpss] = line.split(",");
+      const cve = rawCve?.toUpperCase();
+      if (!cve?.startsWith("CVE-")) continue;
+      const epss = Number(rawEpss);
+      if (!Number.isNaN(epss)) map2.set(cve, epss);
+    }
+    _epss = map2.size ? map2 : null;
+  } catch {
+    _epss = null;
+  }
+  return _epss;
+}
+function scoreOne(f, kev, epss) {
+  const cves = (f.cve ?? []).map((c) => c.toUpperCase());
+  const base = SEV_BASE[f.severity];
+  const factors = [`Severidad ${f.severity}`];
+  let isKev = false;
+  let epssVal;
+  for (const c of cves) {
+    if (kev?.has(c)) isKev = true;
+    const e = epss?.get(c);
+    if (e !== void 0) epssVal = Math.max(epssVal ?? 0, e);
+  }
+  let exploit;
+  if (isKev) {
+    exploit = 1;
+    factors.push("En CISA KEV: explotaci\xF3n activa confirmada");
+  } else if (epssVal !== void 0) {
+    exploit = 0.5 + 0.5 * epssVal;
+    factors.push(`EPSS ${(epssVal * 100).toFixed(1)}% de probabilidad de explotaci\xF3n a 30 d\xEDas`);
+  } else {
+    exploit = 0.6;
+    if (cves.length) factors.push("Sin dato EPSS/KEV para su CVE");
+    else if (kev || epss) factors.push("Sin CVE: prioridad por severidad");
+  }
+  let score = Math.round(base * exploit * 10);
+  if (isKev) score = Math.max(score, 90);
+  score = Math.min(100, Math.max(0, score));
+  return { score, severity: f.severity, epss: epssVal, kev: isKev || void 0, factors };
+}
+function enrichRisk(findings) {
+  const kev = loadKev();
+  const epss = loadEpss();
+  for (const f of findings) f.risk = scoreOne(f, kev, epss);
+}
+var fileDate = (p) => {
+  try {
+    return fs11.statSync(p).mtime.toISOString().slice(0, 10);
+  } catch {
+    return void 0;
+  }
+};
+function feedStatus() {
+  const kev = loadKev();
+  const epss = loadEpss();
+  return {
+    kev: !!kev,
+    epss: !!epss,
+    kevCount: kev?.size ?? 0,
+    epssCount: epss?.size ?? 0,
+    kevAt: fileDate(KEV_FILE),
+    epssAt: fileDate(EPSS_FILE)
+  };
+}
+async function refreshFeeds(which2 = "all") {
+  ensureDirs();
+  fs11.mkdirSync(FEEDS_DIR, { recursive: true });
+  const out = [];
+  if (which2 === "all" || which2 === "kev") {
+    try {
+      const res = await fetch(KEV_URL, { headers: { "User-Agent": "xolotl" } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      fs11.writeFileSync(KEV_FILE, Buffer.from(await res.arrayBuffer()));
+      _kev = void 0;
+      out.push(`\u2713 KEV actualizado: ${loadKev()?.size ?? 0} CVE con explotaci\xF3n activa`);
+    } catch (e) {
+      out.push(`\u2717 KEV: ${e.message}`);
+    }
+  }
+  if (which2 === "all" || which2 === "epss") {
+    try {
+      const res = await fetch(EPSS_URL, { headers: { "User-Agent": "xolotl" } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const csv = zlib.gunzipSync(Buffer.from(await res.arrayBuffer()));
+      fs11.writeFileSync(EPSS_FILE, csv);
+      _epss = void 0;
+      out.push(`\u2713 EPSS actualizado: ${loadEpss()?.size ?? 0} CVE con probabilidad`);
+    } catch (e) {
+      out.push(`\u2717 EPSS: ${e.message}`);
+    }
+  }
+  return out;
+}
+
 // src/index.ts
 var server = new McpServer(
   { name: "xolotl", version: "0.1.0" },
@@ -39292,8 +39442,8 @@ function progress(extra, done, total, message) {
   });
 }
 function resolveDir(p) {
-  const abs = path9.resolve(p);
-  if (!fs11.existsSync(abs) || !fs11.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
+  const abs = path10.resolve(p);
+  if (!fs12.existsSync(abs) || !fs12.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
   return abs;
 }
 function summaryText(meta3, findings, top = 15) {
@@ -39319,6 +39469,7 @@ async function finishRun(meta3, outcomes, root) {
   meta3.tools.push(...outcomes.map((o) => o.run));
   const raw = outcomes.flatMap((o) => o.findings);
   const findings = finalize2(raw, root);
+  enrichRisk(findings);
   saveRun(meta3, findings);
   return summaryText(meta3, findings);
 }
@@ -39342,7 +39493,37 @@ server.registerTool(
     );
     const mode = defaultMode();
     const modeLine = `Modo por defecto: ${mode === "advisory" ? "advisory (Tier 1 \u2014 no se conecta a objetivos; entrega comandos)" : "execute (Tier 2 \u2014 escanea directamente)"}${process.env.XOLOTL_MODE ? " [XOLOTL_MODE]" : ""}`;
-    return text([`Carpeta de trabajo: ${HOME}`, modeLine, ...rows, `Alcance DAST: ${SCOPE_FILE} (${loadScope().length} objetivos autorizados + localhost)`].join("\n"));
+    const fs22 = feedStatus();
+    const feedsLine = fs22.kev || fs22.epss ? `Feeds de riesgo: KEV ${fs22.kev ? `${fs22.kevCount} CVE (${fs22.kevAt})` : "no descargado"} \xB7 EPSS ${fs22.epss ? `${fs22.epssCount} CVE (${fs22.epssAt})` : "no descargado"}` : "Feeds de riesgo: sin descargar (la prioridad usa solo severidad; corre risk_feeds para a\xF1adir EPSS/KEV)";
+    return text([`Carpeta de trabajo: ${HOME}`, modeLine, feedsLine, ...rows, `Alcance DAST: ${SCOPE_FILE} (${loadScope().length} objetivos autorizados + localhost)`].join("\n"));
+  }
+);
+server.registerTool(
+  "risk_feeds",
+  {
+    title: "Feeds de priorizaci\xF3n (EPSS / CISA KEV)",
+    description: "Gestiona los feeds locales que enriquecen la prioridad de los hallazgos con CVE. action=status muestra qu\xE9 hay descargado; action=refresh descarga/actualiza EPSS (probabilidad de explotaci\xF3n, FIRST) y CISA KEV (explotaci\xF3n activa) a ~/.xolotl/feeds. La descarga es opcional: sin feeds, la prioridad se calcula solo con la severidad. Afecta a las corridas nuevas.",
+    inputSchema: {
+      action: external_exports.enum(["status", "refresh"]).optional().describe("status (por defecto) o refresh para descargar"),
+      feed: external_exports.enum(["all", "kev", "epss"]).optional().describe("Qu\xE9 feed actualizar en refresh (por defecto all)")
+    },
+    annotations: { openWorldHint: true }
+  },
+  async (a) => {
+    if ((a.action ?? "status") === "refresh") {
+      const lines = await refreshFeeds(a.feed ?? "all");
+      return text(["Actualizaci\xF3n de feeds de riesgo:", ...lines, "", "Las pr\xF3ximas corridas usar\xE1n estos datos. Reescanea para recalcular hallazgos previos."].join("\n"));
+    }
+    const s = feedStatus();
+    return text(
+      [
+        `Carpeta de feeds: ${HOME}/feeds`,
+        `CISA KEV:  ${s.kev ? `\u2713 ${s.kevCount} CVE con explotaci\xF3n activa (actualizado ${s.kevAt})` : "\u2717 no descargado"}`,
+        `EPSS:      ${s.epss ? `\u2713 ${s.epssCount} CVE con probabilidad (actualizado ${s.epssAt})` : "\u2717 no descargado"}`,
+        "",
+        s.kev || s.epss ? "La prioridad de los hallazgos con CVE usa estos feeds." : "Sin feeds: la prioridad usa solo la severidad. Corre risk_feeds con action=refresh para a\xF1adirlos."
+      ].join("\n")
+    );
   }
 );
 server.registerTool(
@@ -39541,9 +39722,9 @@ server.registerTool(
   },
   async ({ output_path }) => {
     ensureDirs();
-    const file2 = path9.resolve(output_path ?? path9.join(HOME, "xolotl-collect.sh"));
-    fs11.mkdirSync(path9.dirname(file2), { recursive: true });
-    fs11.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+    const file2 = path10.resolve(output_path ?? path10.join(HOME, "xolotl-collect.sh"));
+    fs12.mkdirSync(path10.dirname(file2), { recursive: true });
+    fs12.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
     return text(
       [
         `Script escrito en ${file2} (${collector_default.split("\n").length} l\xEDneas, solo lectura: no instala ni cambia nada y no copia secretos).`,
@@ -39578,9 +39759,9 @@ server.registerTool(
     if (!!a.target === !!a.collected_file) return fail("Indica target (SSH) o collected_file, uno de los dos.");
     if (a.target && resolveMode(a.mode) === "advisory") {
       ensureDirs();
-      const file2 = path9.join(HOME, "xolotl-collect.sh");
-      fs11.mkdirSync(path9.dirname(file2), { recursive: true });
-      fs11.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+      const file2 = path10.join(HOME, "xolotl-collect.sh");
+      fs12.mkdirSync(path10.dirname(file2), { recursive: true });
+      fs12.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
       return text(advisoryHost(file2));
     }
     const timeoutMs = minutes(a.timeout_minutes ?? 15);
@@ -39596,9 +39777,9 @@ server.registerTool(
         collected = await collectViaSsh({ target: a.target, port: a.port, identityFile: a.identity_file, sudo: a.sudo ?? true, timeoutMs }, collector_default);
         via = `ssh ${a.target}`;
       } else {
-        const file2 = path9.resolve(a.collected_file);
-        if (!fs11.existsSync(file2)) return fail(`No existe ${file2}`);
-        collected = fs11.readFileSync(file2, "utf8");
+        const file2 = path10.resolve(a.collected_file);
+        if (!fs12.existsSync(file2)) return fail(`No existe ${file2}`);
+        collected = fs12.readFileSync(file2, "utf8");
         via = file2;
       }
     } catch (e) {
@@ -39800,7 +39981,7 @@ server.registerTool(
             const mark = ln >= loc.startLine && ln <= (loc.endLine ?? loc.startLine) ? ">" : " ";
             return `${mark}${String(ln).padStart(5)} | ${l}`;
           }).join("\n");
-          out.push("", `C\xF3digo (${path9.join(root, loc.file)}):`, numbered);
+          out.push("", `C\xF3digo (${path10.join(root, loc.file)}):`, numbered);
         }
       }
       return text(out.join("\n"));
@@ -39963,9 +40144,9 @@ server.registerTool(
       const fmt = a.format ?? "md";
       const incl = a.include_suppressed ?? true;
       const body = fmt === "md" ? toMarkdown(meta3, findings, incl) : fmt === "html" ? toHtml(meta3, findings, incl) : JSON.stringify(fmt === "sarif" ? toSarif(meta3, findings) : { meta: meta3, findings }, null, 2);
-      const file2 = path9.resolve(a.output_path ?? path9.join(runDir(meta3.id), `informe.${fmt}`));
-      fs11.mkdirSync(path9.dirname(file2), { recursive: true });
-      fs11.writeFileSync(file2, body);
+      const file2 = path10.resolve(a.output_path ?? path10.join(runDir(meta3.id), `informe.${fmt}`));
+      fs12.mkdirSync(path10.dirname(file2), { recursive: true });
+      fs12.writeFileSync(file2, body);
       return text(`Informe ${fmt.toUpperCase()} escrito en ${file2} (${meta3.summary.total} hallazgos activos).`);
     } catch (e) {
       return fail(e.message);
