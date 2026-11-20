@@ -211,6 +211,20 @@ export function scanTrivyImage(dir: string, image: string, scanners: string[], t
   });
 }
 
+/** Escanea el disco de una VM apagada (VMDK, qcow2, raw, AMI, snapshot EBS) sin encenderla. */
+export function scanTrivyVm(dir: string, diskPath: string, scanners: string[], timeoutMs: number): Promise<Outcome> {
+  return guarded("trivy", async (t) => {
+    const out = path.join(dir, "trivy-vm.json");
+    const r = await exe(
+      t,
+      ["vm", "--scanners", scanners.join(","), "--format", "json", "--output", out, "--quiet", "--timeout", `${Math.round(timeoutMs / 60_000)}m`, diskPath],
+      { timeoutMs },
+    );
+    needOutput(out, r, "trivy vm");
+    return { findings: parseTrivy(readJson(out), null, "image"), message: `disco ${path.basename(diskPath)}` };
+  });
+}
+
 // ───────────── Secretos ─────────────
 export function scanGitleaks(ctx: ScanCtx, mode: "auto" | "git" | "dir"): Promise<Outcome> {
   return guarded("gitleaks", async (t) => {

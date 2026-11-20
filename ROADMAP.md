@@ -87,7 +87,7 @@ que tú entregas; lo que toca un sistema vivo respeta Tier 1/Tier 2 y el alcance
 
 | Próximo | Motor previsto | Nivel de acceso |
 |---|---|---|
-| Discos de VM sin encenderlas | `trivy vm` (VMDK, AMI, snapshots EBS) | Credenciales / archivo de disco |
+| Discos de VM sin encenderlas | ✅ `scan_vm` (`trivy vm`, experimental): CVE de paquetes/librerías + secretos + malas configuraciones de un disco (VMDK/qcow2/raw/VHD, AMI, snapshot EBS) sin arrancar la VM | Archivo de disco / credenciales |
 | Benchmarks CIS/STIG formales | ✅ **Lynis** (`scan_lynis`) + ✅ **OpenSCAP** (`scan_openscap`): evalúa contra contenido SCAP (SSG, perfiles CIS/DISA STIG), parsea el XCCDF de resultados con severidad y CCI de STIG. Tier 1 | Usuario de lectura |
 | Nube: plano de control | ✅ **Azure** (Prowler, OCSF) y ✅ **Oracle Cloud (OCI)** (script CIS oficial `cis_reports.py`, CSV) en `scan_cloud`, con identidad de solo lectura. Pendiente: AWS/GCP (mismo armazón que Azure) | Usuario de lectura |
 | Kubernetes: postura | ✅ `scan_k8s` (kube-bench, CIS): nodo/kubelet, RBAC y políticas, Tier 1 (Job para AKS/EKS/GKE o binario). Pendiente: Kubescape (NSA/MITRE) para análisis más profundo | Usuario de lectura (kubeconfig RO) |

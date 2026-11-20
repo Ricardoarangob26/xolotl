@@ -39619,6 +39619,18 @@ function scanTrivyImage(dir, image, scanners, timeoutMs) {
     return { findings: parseTrivy(readJson(out), null, "image"), message: `imagen ${image}` };
   });
 }
+function scanTrivyVm(dir, diskPath, scanners, timeoutMs) {
+  return guarded("trivy", async (t) => {
+    const out = path9.join(dir, "trivy-vm.json");
+    const r = await exe(
+      t,
+      ["vm", "--scanners", scanners.join(","), "--format", "json", "--output", out, "--quiet", "--timeout", `${Math.round(timeoutMs / 6e4)}m`, diskPath],
+      { timeoutMs }
+    );
+    needOutput(out, r, "trivy vm");
+    return { findings: parseTrivy(readJson(out), null, "image"), message: `disco ${path9.basename(diskPath)}` };
+  });
+}
 function scanGitleaks(ctx, mode) {
   return guarded("gitleaks", async (t) => {
     const useGit = mode === "git" || mode === "auto" && fs10.existsSync(path9.join(ctx.root, ".git"));
@@ -42060,6 +42072,32 @@ server.registerTool(
         run: { tool: "win-audit", status: "ok", count: parsed.findings.length, message: `Windows \xB7 ${parsed.host}` },
         findings: parsed.findings
       };
+      return text(await finishRun(meta3, [o], null));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
+  "scan_vm",
+  {
+    title: "Escanear el disco de una VM (sin encenderla)",
+    description: "Escanea el disco de una m\xE1quina virtual apagada con Trivy (modo vm): vulnerabilidades de paquetes del SO y de librer\xEDas, secretos y malas configuraciones, sin arrancar la VM. Acepta im\xE1genes de disco locales (VMDK, qcow2, raw/img, VHD) o referencias de AMI/snapshot EBS que Trivy soporte. Corre la herramienta localmente sobre el archivo que indiques.",
+    inputSchema: {
+      path: external_exports.string().describe("Ruta a la imagen de disco (VMDK/qcow2/raw/VHD), o referencia AMI/EBS soportada por Trivy"),
+      scanners: external_exports.array(external_exports.enum(["vuln", "secret", "misconfig"])).optional().describe("Por defecto vuln, secret, misconfig"),
+      target: external_exports.string().optional().describe("Etiqueta de la VM para el inventario"),
+      timeout_minutes: external_exports.number().min(1).max(120).optional()
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true }
+  },
+  async (a, extra) => {
+    try {
+      const scanners = a.scanners?.length ? a.scanners : ["vuln", "secret", "misconfig"];
+      const label = a.target?.trim() || (a.path.includes("/") || a.path.includes("\\") ? a.path.split(/[\\/]/).pop() : a.path);
+      const { meta: meta3, dir } = newRun("vm", label, { scanners, source: a.path });
+      progress(extra, 0, 1, `trivy vm sobre ${label}`);
+      const o = await scanTrivyVm(dir, a.path, scanners, minutes(a.timeout_minutes ?? 20));
       return text(await finishRun(meta3, [o], null));
     } catch (e) {
       return fail(e.message);

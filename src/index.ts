@@ -20,6 +20,7 @@ import {
   scanSemgrep,
   scanTrivyFs,
   scanTrivyImage,
+  scanTrivyVm,
   collectViaSsh,
   scanHostText,
   scanNetwork,
@@ -704,6 +705,34 @@ server.registerTool(
         run: { tool: "win-audit", status: "ok", count: parsed.findings.length, message: `Windows · ${parsed.host}` },
         findings: parsed.findings,
       };
+      return text(await finishRun(meta, [o], null));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "scan_vm",
+  {
+    title: "Escanear el disco de una VM (sin encenderla)",
+    description:
+      "Escanea el disco de una máquina virtual apagada con Trivy (modo vm): vulnerabilidades de paquetes del SO y de librerías, secretos y malas configuraciones, sin arrancar la VM. Acepta imágenes de disco locales (VMDK, qcow2, raw/img, VHD) o referencias de AMI/snapshot EBS que Trivy soporte. Corre la herramienta localmente sobre el archivo que indiques.",
+    inputSchema: {
+      path: z.string().describe("Ruta a la imagen de disco (VMDK/qcow2/raw/VHD), o referencia AMI/EBS soportada por Trivy"),
+      scanners: z.array(z.enum(["vuln", "secret", "misconfig"])).optional().describe("Por defecto vuln, secret, misconfig"),
+      target: z.string().optional().describe("Etiqueta de la VM para el inventario"),
+      timeout_minutes: z.number().min(1).max(120).optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async (a, extra) => {
+    try {
+      const scanners = a.scanners?.length ? a.scanners : ["vuln", "secret", "misconfig"];
+      const label = a.target?.trim() || (a.path.includes("/") || a.path.includes("\\") ? a.path.split(/[\\/]/).pop()! : a.path);
+      const { meta, dir } = newRun("vm", label, { scanners, source: a.path });
+      progress(extra as Extra, 0, 1, `trivy vm sobre ${label}`);
+      const o = await scanTrivyVm(dir, a.path, scanners, minutes(a.timeout_minutes ?? 20));
       return text(await finishRun(meta, [o], null));
     } catch (e) {
       return fail((e as Error).message);
