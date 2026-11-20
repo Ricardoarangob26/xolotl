@@ -39,6 +39,7 @@ import { k8sAdvisory, parseKubeBench } from "./k8s.js";
 import { cloudAdvisory, parseProwler } from "./cloud.js";
 import { ociAdvisory, parseOciCis } from "./oci.js";
 import { windowsAdvisory, parseWindowsCollected } from "./windows.js";
+import { openscapAdvisory, parseOscapResults } from "./openscap.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -701,6 +702,37 @@ server.registerTool(
       const { meta } = newRun("windows", parsed.host, { source: file });
       const o: Outcome = {
         run: { tool: "win-audit", status: "ok", count: parsed.findings.length, message: `Windows · ${parsed.host}` },
+        findings: parsed.findings,
+      };
+      return text(await finishRun(meta, [o], null));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "scan_openscap",
+  {
+    title: "Benchmark formal CIS/STIG (OpenSCAP)",
+    description:
+      "Evalúa un sistema contra contenido SCAP (SCAP Security Guide: perfiles CIS y DISA STIG) con OpenSCAP, en solo lectura. No se conecta ni instala nada: en modo advisory entrega cómo correr oscap y con collected_file parsea el XML de resultados XCCDF a hallazgos (las reglas que fallan, con su severidad y sus CCI de STIG).",
+    inputSchema: {
+      collected_file: z.string().optional().describe("XML de resultados de oscap (oscap xccdf eval --results oscap-results.xml ...)"),
+      target: z.string().optional().describe("Nombre del sistema para el inventario"),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(openscapAdvisory(a.target));
+      const file = path.resolve(a.collected_file);
+      if (!fs.existsSync(file)) return fail(`No existe ${file}`);
+      const host = a.target?.trim() || "sistema";
+      const parsed = parseOscapResults(fs.readFileSync(file, "utf8"), host);
+      const { meta } = newRun("openscap", host, { source: file, profile: parsed.profile, totals: parsed.totals });
+      const o: Outcome = {
+        run: { tool: "openscap", status: "ok", count: parsed.findings.length, message: `${parsed.totals.fail} fallan · ${parsed.totals.pass} pasan${parsed.profile ? ` · ${parsed.profile.replace(/^xccdf_.*_profile_/, "")}` : ""}` },
         findings: parsed.findings,
       };
       return text(await finishRun(meta, [o], null));

@@ -88,7 +88,7 @@ que tú entregas; lo que toca un sistema vivo respeta Tier 1/Tier 2 y el alcance
 | Próximo | Motor previsto | Nivel de acceso |
 |---|---|---|
 | Discos de VM sin encenderlas | `trivy vm` (VMDK, AMI, snapshots EBS) | Credenciales / archivo de disco |
-| Benchmarks CIS/STIG formales | ✅ **Lynis** (`scan_lynis`): índice de endurecimiento + avisos/sugerencias, Tier 1 (informe a mano, flujo MobaXterm) o Tier 2 (SSH). Pendiente: OpenSCAP (RHEL) y salida en formato STIG con justificaciones | Usuario de lectura |
+| Benchmarks CIS/STIG formales | ✅ **Lynis** (`scan_lynis`) + ✅ **OpenSCAP** (`scan_openscap`): evalúa contra contenido SCAP (SSG, perfiles CIS/DISA STIG), parsea el XCCDF de resultados con severidad y CCI de STIG. Tier 1 | Usuario de lectura |
 | Nube: plano de control | ✅ **Azure** (Prowler, OCSF) y ✅ **Oracle Cloud (OCI)** (script CIS oficial `cis_reports.py`, CSV) en `scan_cloud`, con identidad de solo lectura. Pendiente: AWS/GCP (mismo armazón que Azure) | Usuario de lectura |
 | Kubernetes: postura | ✅ `scan_k8s` (kube-bench, CIS): nodo/kubelet, RBAC y políticas, Tier 1 (Job para AKS/EKS/GKE o binario). Pendiente: Kubescape (NSA/MITRE) para análisis más profundo | Usuario de lectura (kubeconfig RO) |
 | Windows Server | ✅ `scan_windows` (recolector PowerShell de solo lectura, local o por WinRM): SMBv1, firma SMB, WDigest, UAC, LLMNR, Defender, firewall, RDP/NLA, Guest, admins locales, PowerShell v2; mapea a ATT&CK (T1003/T1210/T1557). Pendiente: HardeningKitty para el CIS Windows completo | Admin local de lectura |

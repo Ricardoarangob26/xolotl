@@ -41086,6 +41086,81 @@ function parseWindowsCollected(text2, fallbackHost = "servidor-windows") {
   return { findings: out, host };
 }
 
+// src/openscap.ts
+function openscapAdvisory(target) {
+  return [
+    `## Tier 1 \xB7 advisory \u2014 benchmark formal con OpenSCAP (CIS/STIG)${target ? ` \xB7 ${target}` : ""}`,
+    "oscap eval\xFAa el sistema contra contenido SCAP (SCAP Security Guide). El modo eval solo lee.",
+    "",
+    "En el servidor (RHEL/Rocky/Alma/Ubuntu):",
+    "  1. Instala OpenSCAP y el contenido:",
+    "       RHEL/Rocky:  sudo dnf install -y openscap-scanner scap-security-guide",
+    "       Ubuntu:      sudo apt-get install -y libopenscap8 ssg-debian ssg-base",
+    "  2. Lista los perfiles disponibles del contenido de tu SO y elige uno (CIS o STIG):",
+    "       oscap info /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml",
+    "  3. Eval\xFAa y guarda el XML de resultados (ajusta el datastream y el --profile a tu SO):",
+    "       sudo oscap xccdf eval --profile <id_del_perfil_stig_o_cis> \\",
+    "         --results oscap-results.xml /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml",
+    "",
+    "Volver: scan_openscap con collected_file=<ruta de oscap-results.xml>."
+  ].join("\n");
+}
+var decode3 = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+var attr = (tag, name) => {
+  const m = tag.match(new RegExp(`\\b${name}="([^"]*)"`));
+  return m ? m[1] : void 0;
+};
+var shortId = (idref) => idref.replace(/^xccdf_[^_]+(?:\.[^_]+)*_rule_/, "").replace(/^xccdf_.*_rule_/, "");
+function parseOscapResults(xml, host = "sistema") {
+  if (!/<(?:\w+:)?(?:Benchmark|TestResult|rule-result)\b/.test(xml))
+    throw new Error("El archivo no parece un XML de resultados XCCDF de OpenSCAP. Gen\xE9ralo con oscap xccdf eval --results.");
+  const rules = /* @__PURE__ */ new Map();
+  for (const m of xml.matchAll(/<(?:\w+:)?Rule\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?Rule>/g)) {
+    const id = attr(m[1], "id");
+    if (!id) continue;
+    const severity = attr(m[1], "severity");
+    const t = m[2].match(/<(?:\w+:)?title\b[^>]*>([\s\S]*?)<\/(?:\w+:)?title>/);
+    rules.set(id, { title: t ? decode3(t[1]) : shortId(id), severity });
+  }
+  const profile = (xml.match(/<(?:\w+:)?TestResult\b[^>]*>[\s\S]*?<(?:\w+:)?profile\b[^>]*idref="([^"]+)"/) ?? [])[1];
+  const totals = { fail: 0, pass: 0, other: 0 };
+  const findings = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const m of xml.matchAll(/<(?:\w+:)?rule-result\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?rule-result>/g)) {
+    const idref = attr(m[1], "idref");
+    if (!idref) continue;
+    const res = (m[2].match(/<(?:\w+:)?result\b[^>]*>([^<]+)<\/(?:\w+:)?result>/) ?? [])[1]?.trim().toLowerCase();
+    if (res === "pass") {
+      totals.pass++;
+      continue;
+    }
+    if (res !== "fail" && res !== "error") {
+      totals.other++;
+      continue;
+    }
+    totals.fail++;
+    if (seen.has(idref)) continue;
+    seen.add(idref);
+    const rule = rules.get(idref);
+    const sevRaw = (attr(m[1], "severity") || rule?.severity || "").toLowerCase();
+    const severity = sevRaw === "" || sevRaw === "unknown" ? "medium" : normSeverity(sevRaw);
+    const ccis = [...m[2].matchAll(/<(?:\w+:)?ident\b[^>]*>(CCI-\d+)<\/(?:\w+:)?ident>/g)].map((x) => x[1]);
+    findings.push({
+      tool: "openscap",
+      category: "config",
+      severity,
+      ruleId: `OSCAP-${shortId(idref)}`,
+      title: rule?.title || shortId(idref),
+      description: `OpenSCAP${profile ? ` \xB7 perfil ${profile.replace(/^xccdf_.*_profile_/, "")}` : ""}${ccis.length ? ` \xB7 ${ccis.slice(0, 4).join(", ")}` : ""}${res === "error" ? " \xB7 error al evaluar" : ""}.`,
+      remediation: "Aplica la remediaci\xF3n del benchmark (CIS/STIG); el contenido SSG trae la correcci\xF3n por regla.",
+      cwe: [],
+      references: ccis.length ? [`https://www.cyber.mil/stigs/cci/`] : void 0,
+      location: { target: host }
+    });
+  }
+  return { findings, host, profile, totals };
+}
+
 // src/tier.ts
 var defaultMode = () => (process.env.XOLOTL_MODE ?? "").trim().toLowerCase() === "advisory" ? "advisory" : "execute";
 var resolveMode = (requested) => requested ?? defaultMode();
@@ -41983,6 +42058,35 @@ server.registerTool(
       const { meta: meta3 } = newRun("windows", parsed.host, { source: file2 });
       const o = {
         run: { tool: "win-audit", status: "ok", count: parsed.findings.length, message: `Windows \xB7 ${parsed.host}` },
+        findings: parsed.findings
+      };
+      return text(await finishRun(meta3, [o], null));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
+  "scan_openscap",
+  {
+    title: "Benchmark formal CIS/STIG (OpenSCAP)",
+    description: "Eval\xFAa un sistema contra contenido SCAP (SCAP Security Guide: perfiles CIS y DISA STIG) con OpenSCAP, en solo lectura. No se conecta ni instala nada: en modo advisory entrega c\xF3mo correr oscap y con collected_file parsea el XML de resultados XCCDF a hallazgos (las reglas que fallan, con su severidad y sus CCI de STIG).",
+    inputSchema: {
+      collected_file: external_exports.string().optional().describe("XML de resultados de oscap (oscap xccdf eval --results oscap-results.xml ...)"),
+      target: external_exports.string().optional().describe("Nombre del sistema para el inventario")
+    },
+    annotations: { readOnlyHint: true }
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(openscapAdvisory(a.target));
+      const file2 = path13.resolve(a.collected_file);
+      if (!fs16.existsSync(file2)) return fail(`No existe ${file2}`);
+      const host = a.target?.trim() || "sistema";
+      const parsed = parseOscapResults(fs16.readFileSync(file2, "utf8"), host);
+      const { meta: meta3 } = newRun("openscap", host, { source: file2, profile: parsed.profile, totals: parsed.totals });
+      const o = {
+        run: { tool: "openscap", status: "ok", count: parsed.findings.length, message: `${parsed.totals.fail} fallan \xB7 ${parsed.totals.pass} pasan${parsed.profile ? ` \xB7 ${parsed.profile.replace(/^xccdf_.*_profile_/, "")}` : ""}` },
         findings: parsed.findings
       };
       return text(await finishRun(meta3, [o], null));

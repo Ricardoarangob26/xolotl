@@ -25,6 +25,14 @@ Para un benchmark de endurecimiento reconocido (muchas comprobaciones alineadas 
 `scan_host` es nuestro recolector propio y profundo (CVE de paquetes + endurecimiento accionable);
 `scan_lynis` añade la cobertura y el puntaje de un estándar externo. Se complementan.
 
+### Benchmark formal CIS/STIG con OpenSCAP (`scan_openscap`)
+
+Para un benchmark **formal** (perfiles CIS o **DISA STIG** del SCAP Security Guide), usa
+`scan_openscap`: Tier 1 te da el comando `oscap xccdf eval --results …` (solo lectura); traes el
+XML de resultados y `scan_openscap collected_file=…` lo parsea a hallazgos con su severidad y los
+**CCI de STIG**. Es el estándar formal de cumplimiento; `scan_lynis` es más rápido y `scan_host`
+es nuestro propio recolector accionable. Los tres se complementan.
+
 ## 1. Autorización y modo
 
 Revisar un servidor ajeno sin permiso es un incidente, aunque sea en solo lectura. Antes de empezar, confirma con el usuario que el servidor es suyo o que tiene autorización.
