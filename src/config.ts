@@ -11,6 +11,8 @@ export const SCOPE_FILE = path.join(HOME, "scope.json");
 export const TRIAGE_FILE = path.join(HOME, "triage.json");
 /** Criticidad de negocio por activo (la fija el usuario; modula la prioridad de riesgo). */
 export const ASSETS_FILE = path.join(HOME, "assets.json");
+/** Plan de compromiso (reglas de enfrentamiento y autorización de la vía roja). */
+export const ENGAGEMENT_FILE = path.join(HOME, "engagement.json");
 /** Inventario persistente: SQLite si el runtime lo trae (Node 22.5+), JSON si no. */
 export const DB_FILE = path.join(HOME, "xolotl.db");
 export const INVENTORY_FILE = path.join(HOME, "inventory.json");

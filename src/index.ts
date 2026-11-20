@@ -27,6 +27,7 @@ import {
 import { TOP_PORTS } from "./network.js";
 import COLLECTOR from "./collector.sh";
 import { addScope, builtinScope, expandTargets, loadScope, matchScope, removeScope } from "./scope.js";
+import { clearEngagement, engagementMarkdown, engagementStatus, loadEngagement, setEngagement } from "./engagement.js";
 import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage } from "./store.js";
 import { buildEvalPlan, findingHistory, inventorySummary, listAssets, queryFindings, suggestNextSteps } from "./inventory.js";
 import { confirmFinding, VERDICT_ES } from "./confirm.js";
@@ -483,6 +484,83 @@ server.registerTool(
       }
       const rows = [...builtinScope(), ...loadScope()].map((e) => `- ${e.value} — ${e.authorized_by}${e.evidence ? `: ${e.evidence}` : ""}${e.added_at ? ` (${e.added_at.slice(0, 10)})` : ""}`);
       return text(`Alcance DAST (${SCOPE_FILE}):\n${rows.join("\n")}`);
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "engagement",
+  {
+    title: "Plan de compromiso (reglas de enfrentamiento)",
+    description:
+      "Registra y consulta el marco de la vía roja: quién autoriza, con qué referencia, hasta cuándo, en qué ventanas y bajo qué reglas se puede validar ofensivamente la infraestructura PROPIA. Materializa el candado de la vía roja; no ejecuta nada. action=show muestra el plan; set lo crea/actualiza; status evalúa si la autorización está vigente; export escribe el documento de reglas de enfrentamiento en Markdown; clear lo borra. El alcance concreto vive en dast_scope.",
+    inputSchema: {
+      action: z.enum(["show", "set", "status", "export", "clear"]),
+      name: z.string().optional().describe("Nombre del compromiso (obligatorio en el primer set)"),
+      org: z.string().optional().describe("Organización propia a la que pertenecen los activos"),
+      authorized_by: z.string().optional().describe("Quién autoriza las pruebas"),
+      authorization_ref: z.string().optional().describe("Referencia: ticket, contrato o acta"),
+      authorized_from: z.string().optional().describe("Inicio de vigencia (YYYY-MM-DD)"),
+      authorized_until: z.string().optional().describe("Fin de vigencia (YYYY-MM-DD)"),
+      windows: z.array(z.string()).optional().describe("Ventanas permitidas, p. ej. 'Lun-Vie 20:00-06:00'"),
+      exclusions: z.array(z.string()).optional().describe("Activos explícitamente fuera de alcance"),
+      rules: z.array(z.string()).optional().describe("Reglas de enfrentamiento adicionales (las duras del candado siempre aplican)"),
+      emergency_contact: z.string().optional().describe("Contacto / orden de parada"),
+      default_tier: z.enum(["advisory", "execute"]).optional().describe("Tier por defecto de la vía roja (por defecto advisory)"),
+      output_path: z.string().optional().describe("Ruta del documento para action=export (por defecto engagement.md en ~/.xolotl)"),
+    },
+    annotations: { readOnlyHint: false },
+  },
+  async (a) => {
+    try {
+      const scopeList = () => [...builtinScope(), ...loadScope()].map((e) => e.value);
+      if (a.action === "set") {
+        const e = setEngagement({
+          name: a.name,
+          org: a.org,
+          authorized_by: a.authorized_by,
+          authorization_ref: a.authorization_ref,
+          authorized_from: a.authorized_from,
+          authorized_until: a.authorized_until,
+          windows: a.windows,
+          exclusions: a.exclusions,
+          rules: a.rules,
+          emergency_contact: a.emergency_contact,
+          default_tier: a.default_tier,
+        });
+        const st = engagementStatus();
+        return text([`Plan de compromiso «${e.name}» guardado.`, st.authorized ? "Autorización vigente." : `Autorización NO vigente: ${st.reasons.filter((r) => !r.startsWith("Aviso:")).join(" ") || "revisa los datos."}`, "Revisa el documento completo con engagement action=export."].join("\n"));
+      }
+      if (a.action === "clear") return text(clearEngagement() ? "Plan de compromiso borrado." : "No había plan de compromiso que borrar.");
+      if (a.action === "status") {
+        const st = engagementStatus();
+        const head = !st.present ? "Sin plan de compromiso." : st.authorized ? `Autorización VIGENTE para «${st.engagement!.name}».` : `Autorización NO vigente para «${st.engagement!.name}».`;
+        const lines = st.reasons.length ? ["", ...st.reasons.map((r) => `- ${r}`)] : [];
+        const scope = st.present ? [`Alcance registrado: ${scopeList().length} objetivo(s). Tier por defecto: ${st.engagement!.default_tier}.`] : [];
+        return text([head, ...lines, ...(scope.length ? ["", ...scope] : [])].join("\n"));
+      }
+      const e = loadEngagement();
+      if (!e) return text("No hay plan de compromiso. Regístralo con engagement action=set (al menos name, authorized_by y authorization_ref) antes de cualquier prueba de la vía roja.");
+      if (a.action === "export") {
+        const file = path.resolve(a.output_path ?? path.join(HOME, "engagement.md"));
+        const body = engagementMarkdown(e, scopeList());
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, body);
+        return text(`Reglas de enfrentamiento escritas en ${file}. Compártelas y, si procede, fírmalas antes de ejecutar nada de la vía roja.`);
+      }
+      // show
+      const st = engagementStatus();
+      const out = [
+        `Plan de compromiso «${e.name}»${e.org ? ` — ${e.org}` : ""}`,
+        `Autoriza: ${e.authorized_by || "(pendiente)"} · ref: ${e.authorization_ref || "(pendiente)"}`,
+        `Vigencia: ${e.authorized_from ?? "(sin inicio)"} → ${e.authorized_until ?? "(sin fin)"} · ${st.authorized ? "VIGENTE" : "NO vigente"}`,
+        `Tier por defecto: ${e.default_tier} · ventanas: ${e.windows.length || "0"} · exclusiones: ${e.exclusions.length || "0"} · reglas extra: ${e.rules.length || "0"}`,
+        `Alcance en dast_scope: ${scopeList().length} objetivo(s).`,
+        "Documento completo: engagement action=export. El candado de la vía roja aplica siempre.",
+      ];
+      return text(out.join("\n"));
     } catch (e) {
       return fail((e as Error).message);
     }
@@ -1007,7 +1085,7 @@ server.registerTool(
       return text(
         [
           `Traspaso importado (exportado ${r.exportedAt.slice(0, 16).replace("T", " ")} UTC)${a.replace ? " [reemplazo]" : " [fusión]"}.`,
-          `Alcance: ${r.scope} objetivo(s) · Triage: ${r.triage} · Criticidad: ${r.assets} activo(s).`,
+          `Alcance: ${r.scope} objetivo(s) · Triage: ${r.triage} · Criticidad: ${r.assets} activo(s)${r.engagement ? " · plan de compromiso restaurado" : ""}.`,
           `Inventario: ${r.inventory.findings} hallazgo(s), ${r.inventory.runs} corrida(s), ${r.inventory.links} enlace(s).`,
           `Corridas restauradas: ${r.runsWritten}${r.runsSkipped ? ` (${r.runsSkipped} ya existían, se conservaron)` : ""}.`,
           "Revisa el estado con inventory, runs_list y dast_scope.",

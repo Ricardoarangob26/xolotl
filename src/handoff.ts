@@ -16,6 +16,7 @@ import { AssetDb, importAssets, loadAssets } from "./assets.js";
 import { exportTriage, importTriage } from "./store.js";
 import { exportInventory, importInventory, InventoryExport } from "./inventory.js";
 import { feedStatus, FeedStatus } from "./risk.js";
+import { Engagement, importEngagement, loadEngagement } from "./engagement.js";
 import type { Finding } from "./findings.js";
 
 export const HANDOFF_VERSION = "1";
@@ -32,6 +33,7 @@ export interface Handoff {
   scope: ScopeEntry[];
   triage: Record<string, { status: string; note?: string; at: string; title?: string }>;
   assets: AssetDb;
+  engagement: Engagement | null;
   feeds: FeedStatus;
   inventory: InventoryExport;
   runs: RunArtifact[];
@@ -69,6 +71,7 @@ export function buildHandoff(includeRuns: boolean): Handoff {
     scope: loadScope(),
     triage: exportTriage(),
     assets: loadAssets(),
+    engagement: loadEngagement(),
     feeds: feedStatus(),
     inventory: exportInventory(),
     runs: includeRuns ? readAllRuns() : [],
@@ -106,6 +109,7 @@ export interface ImportStats {
   scope: number;
   triage: number;
   assets: number;
+  engagement: boolean;
   inventory: { runs: number; findings: number; links: number };
   runsWritten: number;
   runsSkipped: number;
@@ -128,6 +132,7 @@ export function readHandoff(file: string, opts: { replace?: boolean; includeRuns
   const scope = importScope(h.scope ?? [], replace);
   const triage = importTriage(h.triage ?? {}, replace);
   const assets = importAssets(h.assets ?? {}, replace);
+  const engagement = importEngagement(h.engagement);
   const inventory = importInventory(h.inventory ?? { runs: [], findings: [], links: [] });
 
   let runsWritten = 0;
@@ -151,5 +156,5 @@ export function readHandoff(file: string, opts: { replace?: boolean; includeRuns
     }
   }
 
-  return { scope, triage, assets, inventory, runsWritten, runsSkipped, exportedAt: h.exported_at };
+  return { scope, triage, assets, engagement, inventory, runsWritten, runsSkipped, exportedAt: h.exported_at };
 }

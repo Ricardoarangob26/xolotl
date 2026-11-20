@@ -7239,12 +7239,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs16, exportName) {
+    function addFormats(ajv, list, fs17, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs16[f]);
+        ajv.addFormat(f, fs17[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7253,7 +7253,7 @@ var require_dist = __commonJS({
 });
 
 // src/index.ts
-import fs15 from "node:fs";
+import fs16 from "node:fs";
 import path13 from "node:path";
 
 // node_modules/zod/v3/helpers/util.js
@@ -14234,15 +14234,15 @@ var $ZodDate = /* @__PURE__ */ $constructor("$ZodDate", (inst, def) => {
       }
     }
     const input2 = payload.value;
-    const isDate = input2 instanceof Date;
-    const isValidDate = isDate && !Number.isNaN(input2.getTime());
+    const isDate2 = input2 instanceof Date;
+    const isValidDate = isDate2 && !Number.isNaN(input2.getTime());
     if (isValidDate)
       return payload;
     payload.issues.push({
       expected: "date",
       code: "invalid_type",
       input: input2,
-      ...isDate ? { received: "Invalid Date" } : {},
+      ...isDate2 ? { received: "Invalid Date" } : {},
       inst
     });
     return payload;
@@ -36670,6 +36670,7 @@ var RUNS_DIR = path.join(HOME, "runs");
 var SCOPE_FILE = path.join(HOME, "scope.json");
 var TRIAGE_FILE = path.join(HOME, "triage.json");
 var ASSETS_FILE = path.join(HOME, "assets.json");
+var ENGAGEMENT_FILE = path.join(HOME, "engagement.json");
 var DB_FILE = path.join(HOME, "xolotl.db");
 var INVENTORY_FILE = path.join(HOME, "inventory.json");
 var DEFAULT_EXCLUDES = [
@@ -37332,7 +37333,7 @@ function jsonBackend() {
     data = { runs: [], findings: {}, links: [], ...JSON.parse(fs7.readFileSync(INVENTORY_FILE, "utf8")) };
   } catch {
   }
-  const save = () => {
+  const save2 = () => {
     ensureDirs();
     fs7.writeFileSync(INVENTORY_FILE, JSON.stringify(data, null, 2));
   };
@@ -37358,7 +37359,7 @@ function jsonBackend() {
     begin: () => {
     },
     commit: () => {
-      if (dirty) save();
+      if (dirty) save2();
       dirty = false;
     }
   };
@@ -40021,8 +40022,124 @@ function matchScope(target) {
 }
 var builtinScope = () => BUILTIN;
 
-// src/confirm.ts
+// src/engagement.ts
 import fs12 from "node:fs";
+var ENGAGEMENT_VERSION = "1";
+var HARD_RULES = [
+  "Solo activos propios dentro del alcance registrado en dast_scope; el objetivo se valida contra el alcance antes de cada acci\xF3n.",
+  "Tier 1 (advisory) por defecto: el servidor entrega el comando y t\xFA lo corres. Tier 2 (ejecuci\xF3n) pide aprobaci\xF3n por comando y registra qui\xE9n aprob\xF3.",
+  "Nada destructivo; nada en producci\xF3n fuera de la ventana acordada.",
+  "Credenciales y artefactos de prueba sint\xE9ticos, nunca datos reales de clientes.",
+  "Nada contra terceros. Fuera incluso de la v\xEDa roja: phishing e ingenier\xEDa social, C2 real, exfiltraci\xF3n de datos reales, persistencia duradera y anonimato del operador."
+];
+function loadEngagement() {
+  try {
+    const e = JSON.parse(fs12.readFileSync(ENGAGEMENT_FILE, "utf8"));
+    return e && e.version ? e : null;
+  } catch {
+    return null;
+  }
+}
+function save(e) {
+  ensureDirs();
+  fs12.writeFileSync(ENGAGEMENT_FILE, JSON.stringify(e, null, 2));
+}
+function clearEngagement() {
+  try {
+    fs12.unlinkSync(ENGAGEMENT_FILE);
+    return true;
+  } catch {
+    return false;
+  }
+}
+var isDate = (s) => !s || /^\d{4}-\d{2}-\d{2}$/.test(s);
+function setEngagement(patch) {
+  const prev = loadEngagement();
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  for (const [k, v] of [
+    ["authorized_from", patch.authorized_from],
+    ["authorized_until", patch.authorized_until]
+  ]) {
+    if (!isDate(v)) throw new Error(`${k} debe tener formato YYYY-MM-DD.`);
+  }
+  if (!prev && !patch.name?.trim()) throw new Error("El primer registro del plan necesita al menos 'name' (nombre del compromiso).");
+  const merged = {
+    version: ENGAGEMENT_VERSION,
+    name: patch.name?.trim() ?? prev?.name ?? "",
+    org: patch.org?.trim() ?? prev?.org ?? "",
+    authorized_by: patch.authorized_by?.trim() ?? prev?.authorized_by ?? "",
+    authorization_ref: patch.authorization_ref?.trim() ?? prev?.authorization_ref ?? "",
+    authorized_from: patch.authorized_from ?? prev?.authorized_from,
+    authorized_until: patch.authorized_until ?? prev?.authorized_until,
+    windows: patch.windows ?? prev?.windows ?? [],
+    exclusions: patch.exclusions ?? prev?.exclusions ?? [],
+    rules: patch.rules ?? prev?.rules ?? [],
+    emergency_contact: patch.emergency_contact?.trim() ?? prev?.emergency_contact ?? "",
+    default_tier: patch.default_tier ?? prev?.default_tier ?? "advisory",
+    created_at: prev?.created_at ?? now,
+    updated_at: now
+  };
+  if (merged.authorized_from && merged.authorized_until && merged.authorized_from > merged.authorized_until) {
+    throw new Error("authorized_from no puede ser posterior a authorized_until.");
+  }
+  save(merged);
+  return merged;
+}
+function engagementStatus(today = /* @__PURE__ */ new Date()) {
+  const e = loadEngagement();
+  if (!e) return { present: false, authorized: false, reasons: ["No hay plan de compromiso. Reg\xEDstralo con engagement action=set antes de cualquier prueba de la v\xEDa roja."], engagement: null };
+  const reasons = [];
+  if (!e.authorized_by) reasons.push("Falta qui\xE9n autoriza (authorized_by).");
+  if (!e.authorization_ref) reasons.push("Falta la referencia de autorizaci\xF3n (ticket/contrato/acta).");
+  const day = today.toISOString().slice(0, 10);
+  if (e.authorized_from && day < e.authorized_from) reasons.push(`La autorizaci\xF3n empieza el ${e.authorized_from} (hoy ${day}).`);
+  if (e.authorized_until && day > e.authorized_until) reasons.push(`La autorizaci\xF3n venci\xF3 el ${e.authorized_until} (hoy ${day}).`);
+  if (!e.authorized_until) reasons.push("Aviso: sin fecha de fin (authorized_until); conviene acotar la vigencia.");
+  const blocking = reasons.filter((r) => !r.startsWith("Aviso:"));
+  return { present: true, authorized: blocking.length === 0, reasons, engagement: e };
+}
+function importEngagement(e) {
+  if (!e || !e.version) return false;
+  save({ ...e, version: ENGAGEMENT_VERSION, updated_at: (/* @__PURE__ */ new Date()).toISOString() });
+  return true;
+}
+function engagementMarkdown(e, scope) {
+  const st = engagementStatus();
+  const estado = !st.present ? "sin plan" : st.authorized ? "autorizaci\xF3n vigente" : "autorizaci\xF3n NO vigente";
+  const line = (label, v) => `- **${label}:** ${v && v.trim() ? v : "_(pendiente)_"}`;
+  const out = [];
+  out.push(`# Reglas de enfrentamiento \u2014 ${e.name || "(sin nombre)"}`, "");
+  out.push(`> Estado: **${estado}**. Documento de gobernanza de la v\xEDa roja de Xolotl. No autoriza por s\xED solo: refleja la autorizaci\xF3n registrada.`, "");
+  out.push("## Autorizaci\xF3n", "");
+  out.push(line("Organizaci\xF3n (activos propios)", e.org));
+  out.push(line("Autoriza", e.authorized_by));
+  out.push(line("Referencia de autorizaci\xF3n", e.authorization_ref));
+  out.push(line("Vigencia", `${e.authorized_from ?? "(inicio sin fijar)"} \u2192 ${e.authorized_until ?? "(fin sin fijar)"}`));
+  out.push(line("Contacto / orden de parada", e.emergency_contact));
+  out.push(line("Tier por defecto", e.default_tier === "advisory" ? "Tier 1 (advisory)" : "Tier 2 (ejecuci\xF3n)"));
+  out.push("", "## Alcance autorizado", "");
+  if (scope.length) for (const s of scope) out.push(`- ${s}`);
+  else out.push("_Sin objetivos en dast_scope. Reg\xEDstralos con dast_scope action=add._");
+  if (e.exclusions.length) {
+    out.push("", "### Exclusiones (expl\xEDcitamente fuera de alcance)", "");
+    for (const x of e.exclusions) out.push(`- ${x}`);
+  }
+  out.push("", "## Ventanas permitidas", "");
+  if (e.windows.length) for (const w of e.windows) out.push(`- ${w}`);
+  else out.push("_Sin ventanas definidas; acuerda y registra las ventanas antes de ejecutar (Tier 2)._");
+  out.push("", "## Reglas de enfrentamiento", "");
+  out.push("Reglas duras (candado de la v\xEDa roja, no negociables):", "");
+  for (const r of HARD_RULES) out.push(`- ${r}`);
+  if (e.rules.length) {
+    out.push("", "Reglas adicionales de este compromiso:", "");
+    for (const r of e.rules) out.push(`- ${r}`);
+  }
+  out.push("", "---", `_Generado por Xolotl el ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 16).replace("T", " ")} UTC. Creado ${e.created_at.slice(0, 10)}, actualizado ${e.updated_at.slice(0, 10)}._`);
+  return out.join("\n");
+}
+
+// src/confirm.ts
+import fs13 from "node:fs";
 import path10 from "node:path";
 var inconclusive = (method, note) => ({ verdict: "inconclusive", method, note });
 var norm = (s) => s.replace(/\s+/g, " ").trim();
@@ -40031,9 +40148,9 @@ function resolveFile(root, file2) {
 }
 function readFileSafe(abs) {
   try {
-    const st = fs12.statSync(abs);
+    const st = fs13.statSync(abs);
     if (!st.isFile() || st.size > 5 * 1024 * 1024) return null;
-    return fs12.readFileSync(abs, "utf8");
+    return fs13.readFileSync(abs, "utf8");
   } catch {
     return null;
   }
@@ -40208,7 +40325,7 @@ function advisoryHost(scriptPath) {
 }
 
 // src/risk.ts
-import fs13 from "node:fs";
+import fs14 from "node:fs";
 import path11 from "node:path";
 import zlib from "node:zlib";
 var FEEDS_DIR = path11.join(HOME, "feeds");
@@ -40222,7 +40339,7 @@ var _epss;
 function loadKev() {
   if (_kev !== void 0) return _kev;
   try {
-    const raw = JSON.parse(fs13.readFileSync(KEV_FILE, "utf8"));
+    const raw = JSON.parse(fs14.readFileSync(KEV_FILE, "utf8"));
     const set2 = /* @__PURE__ */ new Set();
     for (const v of raw.vulnerabilities ?? []) if (v.cveID) set2.add(String(v.cveID).toUpperCase());
     _kev = set2.size ? set2 : null;
@@ -40235,7 +40352,7 @@ function loadEpss() {
   if (_epss !== void 0) return _epss;
   try {
     const map2 = /* @__PURE__ */ new Map();
-    for (const line of fs13.readFileSync(EPSS_FILE, "utf8").split(/\r?\n/)) {
+    for (const line of fs14.readFileSync(EPSS_FILE, "utf8").split(/\r?\n/)) {
       if (!line || line[0] === "#") continue;
       const [rawCve, rawEpss] = line.split(",");
       const cve = rawCve?.toUpperCase();
@@ -40308,7 +40425,7 @@ function enrichRisk(findings, fallbackTarget) {
 }
 var fileDate = (p) => {
   try {
-    return fs13.statSync(p).mtime.toISOString().slice(0, 10);
+    return fs14.statSync(p).mtime.toISOString().slice(0, 10);
   } catch {
     return void 0;
   }
@@ -40327,13 +40444,13 @@ function feedStatus() {
 }
 async function refreshFeeds(which2 = "all") {
   ensureDirs();
-  fs13.mkdirSync(FEEDS_DIR, { recursive: true });
+  fs14.mkdirSync(FEEDS_DIR, { recursive: true });
   const out = [];
   if (which2 === "all" || which2 === "kev") {
     try {
       const res = await fetch(KEV_URL, { headers: { "User-Agent": "xolotl" } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      fs13.writeFileSync(KEV_FILE, Buffer.from(await res.arrayBuffer()));
+      fs14.writeFileSync(KEV_FILE, Buffer.from(await res.arrayBuffer()));
       _kev = void 0;
       out.push(`\u2713 KEV actualizado: ${loadKev()?.size ?? 0} CVE con explotaci\xF3n activa`);
     } catch (e) {
@@ -40345,7 +40462,7 @@ async function refreshFeeds(which2 = "all") {
       const res = await fetch(EPSS_URL, { headers: { "User-Agent": "xolotl" } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const csv = zlib.gunzipSync(Buffer.from(await res.arrayBuffer()));
-      fs13.writeFileSync(EPSS_FILE, csv);
+      fs14.writeFileSync(EPSS_FILE, csv);
       _epss = void 0;
       out.push(`\u2713 EPSS actualizado: ${loadEpss()?.size ?? 0} CVE con probabilidad`);
     } catch (e) {
@@ -40356,13 +40473,13 @@ async function refreshFeeds(which2 = "all") {
 }
 
 // src/handoff.ts
-import fs14 from "node:fs";
+import fs15 from "node:fs";
 import path12 from "node:path";
 var HANDOFF_VERSION = "1";
 function readAllRuns() {
   let dirs = [];
   try {
-    dirs = fs14.readdirSync(RUNS_DIR);
+    dirs = fs15.readdirSync(RUNS_DIR);
   } catch {
     return [];
   }
@@ -40370,12 +40487,12 @@ function readAllRuns() {
   for (const id of dirs) {
     const metaPath = path12.join(RUNS_DIR, id, "meta.json");
     const findingsPath = path12.join(RUNS_DIR, id, "findings.json");
-    if (!fs14.existsSync(metaPath) || !fs14.existsSync(findingsPath)) continue;
+    if (!fs15.existsSync(metaPath) || !fs15.existsSync(findingsPath)) continue;
     try {
       out.push({
         id,
-        meta: JSON.parse(fs14.readFileSync(metaPath, "utf8")),
-        findings: JSON.parse(fs14.readFileSync(findingsPath, "utf8"))
+        meta: JSON.parse(fs15.readFileSync(metaPath, "utf8")),
+        findings: JSON.parse(fs15.readFileSync(findingsPath, "utf8"))
       });
     } catch {
     }
@@ -40389,6 +40506,7 @@ function buildHandoff(includeRuns) {
     scope: loadScope(),
     triage: exportTriage(),
     assets: loadAssets(),
+    engagement: loadEngagement(),
     feeds: feedStatus(),
     inventory: exportInventory(),
     runs: includeRuns ? readAllRuns() : []
@@ -40398,8 +40516,8 @@ function writeHandoff(file2, includeRuns) {
   ensureDirs();
   const h = buildHandoff(includeRuns);
   const json2 = JSON.stringify(h, null, 2);
-  fs14.mkdirSync(path12.dirname(path12.resolve(file2)), { recursive: true });
-  fs14.writeFileSync(file2, json2);
+  fs15.mkdirSync(path12.dirname(path12.resolve(file2)), { recursive: true });
+  fs15.writeFileSync(file2, json2);
   return {
     file: path12.resolve(file2),
     bytes: Buffer.byteLength(json2),
@@ -40411,7 +40529,7 @@ function writeHandoff(file2, includeRuns) {
   };
 }
 function readHandoff(file2, opts = {}) {
-  const raw = fs14.readFileSync(file2, "utf8");
+  const raw = fs15.readFileSync(file2, "utf8");
   let h;
   try {
     h = JSON.parse(raw);
@@ -40424,6 +40542,7 @@ function readHandoff(file2, opts = {}) {
   const scope = importScope(h.scope ?? [], replace);
   const triage = importTriage(h.triage ?? {}, replace);
   const assets = importAssets(h.assets ?? {}, replace);
+  const engagement = importEngagement(h.engagement);
   const inventory = importInventory(h.inventory ?? { runs: [], findings: [], links: [] });
   let runsWritten = 0;
   let runsSkipped = 0;
@@ -40431,20 +40550,20 @@ function readHandoff(file2, opts = {}) {
     ensureDirs();
     for (const r of h.runs ?? []) {
       const dir = path12.join(RUNS_DIR, path12.basename(r.id));
-      if (fs14.existsSync(path12.join(dir, "meta.json")) && !replace) {
+      if (fs15.existsSync(path12.join(dir, "meta.json")) && !replace) {
         runsSkipped++;
         continue;
       }
       try {
-        fs14.mkdirSync(dir, { recursive: true });
-        fs14.writeFileSync(path12.join(dir, "meta.json"), JSON.stringify(r.meta, null, 2));
-        fs14.writeFileSync(path12.join(dir, "findings.json"), JSON.stringify(r.findings, null, 2));
+        fs15.mkdirSync(dir, { recursive: true });
+        fs15.writeFileSync(path12.join(dir, "meta.json"), JSON.stringify(r.meta, null, 2));
+        fs15.writeFileSync(path12.join(dir, "findings.json"), JSON.stringify(r.findings, null, 2));
         runsWritten++;
       } catch {
       }
     }
   }
-  return { scope, triage, assets, inventory, runsWritten, runsSkipped, exportedAt: h.exported_at };
+  return { scope, triage, assets, engagement, inventory, runsWritten, runsSkipped, exportedAt: h.exported_at };
 }
 
 // src/index.ts
@@ -40464,7 +40583,7 @@ function progress(extra, done, total, message) {
 }
 function resolveDir(p) {
   const abs = path13.resolve(p);
-  if (!fs15.existsSync(abs) || !fs15.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
+  if (!fs16.existsSync(abs) || !fs16.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
   return abs;
 }
 function summaryText(meta3, findings, top = 15) {
@@ -40744,8 +40863,8 @@ server.registerTool(
   async ({ output_path }) => {
     ensureDirs();
     const file2 = path13.resolve(output_path ?? path13.join(HOME, "xolotl-collect.sh"));
-    fs15.mkdirSync(path13.dirname(file2), { recursive: true });
-    fs15.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+    fs16.mkdirSync(path13.dirname(file2), { recursive: true });
+    fs16.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
     return text(
       [
         `Script escrito en ${file2} (${collector_default.split("\n").length} l\xEDneas, solo lectura: no instala ni cambia nada y no copia secretos).`,
@@ -40781,8 +40900,8 @@ server.registerTool(
     if (a.target && resolveMode(a.mode) === "advisory") {
       ensureDirs();
       const file2 = path13.join(HOME, "xolotl-collect.sh");
-      fs15.mkdirSync(path13.dirname(file2), { recursive: true });
-      fs15.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+      fs16.mkdirSync(path13.dirname(file2), { recursive: true });
+      fs16.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
       return text(advisoryHost(file2));
     }
     const timeoutMs = minutes(a.timeout_minutes ?? 15);
@@ -40799,8 +40918,8 @@ server.registerTool(
         via = `ssh ${a.target}`;
       } else {
         const file2 = path13.resolve(a.collected_file);
-        if (!fs15.existsSync(file2)) return fail(`No existe ${file2}`);
-        collected = fs15.readFileSync(file2, "utf8");
+        if (!fs16.existsSync(file2)) return fail(`No existe ${file2}`);
+        collected = fs16.readFileSync(file2, "utf8");
         via = file2;
       }
     } catch (e) {
@@ -40845,6 +40964,80 @@ server.registerTool(
       const rows = [...builtinScope(), ...loadScope()].map((e) => `- ${e.value} \u2014 ${e.authorized_by}${e.evidence ? `: ${e.evidence}` : ""}${e.added_at ? ` (${e.added_at.slice(0, 10)})` : ""}`);
       return text(`Alcance DAST (${SCOPE_FILE}):
 ${rows.join("\n")}`);
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
+  "engagement",
+  {
+    title: "Plan de compromiso (reglas de enfrentamiento)",
+    description: "Registra y consulta el marco de la v\xEDa roja: qui\xE9n autoriza, con qu\xE9 referencia, hasta cu\xE1ndo, en qu\xE9 ventanas y bajo qu\xE9 reglas se puede validar ofensivamente la infraestructura PROPIA. Materializa el candado de la v\xEDa roja; no ejecuta nada. action=show muestra el plan; set lo crea/actualiza; status eval\xFAa si la autorizaci\xF3n est\xE1 vigente; export escribe el documento de reglas de enfrentamiento en Markdown; clear lo borra. El alcance concreto vive en dast_scope.",
+    inputSchema: {
+      action: external_exports.enum(["show", "set", "status", "export", "clear"]),
+      name: external_exports.string().optional().describe("Nombre del compromiso (obligatorio en el primer set)"),
+      org: external_exports.string().optional().describe("Organizaci\xF3n propia a la que pertenecen los activos"),
+      authorized_by: external_exports.string().optional().describe("Qui\xE9n autoriza las pruebas"),
+      authorization_ref: external_exports.string().optional().describe("Referencia: ticket, contrato o acta"),
+      authorized_from: external_exports.string().optional().describe("Inicio de vigencia (YYYY-MM-DD)"),
+      authorized_until: external_exports.string().optional().describe("Fin de vigencia (YYYY-MM-DD)"),
+      windows: external_exports.array(external_exports.string()).optional().describe("Ventanas permitidas, p. ej. 'Lun-Vie 20:00-06:00'"),
+      exclusions: external_exports.array(external_exports.string()).optional().describe("Activos expl\xEDcitamente fuera de alcance"),
+      rules: external_exports.array(external_exports.string()).optional().describe("Reglas de enfrentamiento adicionales (las duras del candado siempre aplican)"),
+      emergency_contact: external_exports.string().optional().describe("Contacto / orden de parada"),
+      default_tier: external_exports.enum(["advisory", "execute"]).optional().describe("Tier por defecto de la v\xEDa roja (por defecto advisory)"),
+      output_path: external_exports.string().optional().describe("Ruta del documento para action=export (por defecto engagement.md en ~/.xolotl)")
+    },
+    annotations: { readOnlyHint: false }
+  },
+  async (a) => {
+    try {
+      const scopeList = () => [...builtinScope(), ...loadScope()].map((e2) => e2.value);
+      if (a.action === "set") {
+        const e2 = setEngagement({
+          name: a.name,
+          org: a.org,
+          authorized_by: a.authorized_by,
+          authorization_ref: a.authorization_ref,
+          authorized_from: a.authorized_from,
+          authorized_until: a.authorized_until,
+          windows: a.windows,
+          exclusions: a.exclusions,
+          rules: a.rules,
+          emergency_contact: a.emergency_contact,
+          default_tier: a.default_tier
+        });
+        const st2 = engagementStatus();
+        return text([`Plan de compromiso \xAB${e2.name}\xBB guardado.`, st2.authorized ? "Autorizaci\xF3n vigente." : `Autorizaci\xF3n NO vigente: ${st2.reasons.filter((r) => !r.startsWith("Aviso:")).join(" ") || "revisa los datos."}`, "Revisa el documento completo con engagement action=export."].join("\n"));
+      }
+      if (a.action === "clear") return text(clearEngagement() ? "Plan de compromiso borrado." : "No hab\xEDa plan de compromiso que borrar.");
+      if (a.action === "status") {
+        const st2 = engagementStatus();
+        const head = !st2.present ? "Sin plan de compromiso." : st2.authorized ? `Autorizaci\xF3n VIGENTE para \xAB${st2.engagement.name}\xBB.` : `Autorizaci\xF3n NO vigente para \xAB${st2.engagement.name}\xBB.`;
+        const lines = st2.reasons.length ? ["", ...st2.reasons.map((r) => `- ${r}`)] : [];
+        const scope = st2.present ? [`Alcance registrado: ${scopeList().length} objetivo(s). Tier por defecto: ${st2.engagement.default_tier}.`] : [];
+        return text([head, ...lines, ...scope.length ? ["", ...scope] : []].join("\n"));
+      }
+      const e = loadEngagement();
+      if (!e) return text("No hay plan de compromiso. Reg\xEDstralo con engagement action=set (al menos name, authorized_by y authorization_ref) antes de cualquier prueba de la v\xEDa roja.");
+      if (a.action === "export") {
+        const file2 = path13.resolve(a.output_path ?? path13.join(HOME, "engagement.md"));
+        const body = engagementMarkdown(e, scopeList());
+        fs16.mkdirSync(path13.dirname(file2), { recursive: true });
+        fs16.writeFileSync(file2, body);
+        return text(`Reglas de enfrentamiento escritas en ${file2}. Comp\xE1rtelas y, si procede, f\xEDrmalas antes de ejecutar nada de la v\xEDa roja.`);
+      }
+      const st = engagementStatus();
+      const out = [
+        `Plan de compromiso \xAB${e.name}\xBB${e.org ? ` \u2014 ${e.org}` : ""}`,
+        `Autoriza: ${e.authorized_by || "(pendiente)"} \xB7 ref: ${e.authorization_ref || "(pendiente)"}`,
+        `Vigencia: ${e.authorized_from ?? "(sin inicio)"} \u2192 ${e.authorized_until ?? "(sin fin)"} \xB7 ${st.authorized ? "VIGENTE" : "NO vigente"}`,
+        `Tier por defecto: ${e.default_tier} \xB7 ventanas: ${e.windows.length || "0"} \xB7 exclusiones: ${e.exclusions.length || "0"} \xB7 reglas extra: ${e.rules.length || "0"}`,
+        `Alcance en dast_scope: ${scopeList().length} objetivo(s).`,
+        "Documento completo: engagement action=export. El candado de la v\xEDa roja aplica siempre."
+      ];
+      return text(out.join("\n"));
     } catch (e) {
       return fail(e.message);
     }
@@ -41339,12 +41532,12 @@ server.registerTool(
           ].join("\n")
         );
       }
-      if (!fs15.existsSync(a.path)) return fail(`No existe el archivo ${a.path}.`);
+      if (!fs16.existsSync(a.path)) return fail(`No existe el archivo ${a.path}.`);
       const r = readHandoff(a.path, { replace: a.replace, includeRuns: a.include_runs });
       return text(
         [
           `Traspaso importado (exportado ${r.exportedAt.slice(0, 16).replace("T", " ")} UTC)${a.replace ? " [reemplazo]" : " [fusi\xF3n]"}.`,
-          `Alcance: ${r.scope} objetivo(s) \xB7 Triage: ${r.triage} \xB7 Criticidad: ${r.assets} activo(s).`,
+          `Alcance: ${r.scope} objetivo(s) \xB7 Triage: ${r.triage} \xB7 Criticidad: ${r.assets} activo(s)${r.engagement ? " \xB7 plan de compromiso restaurado" : ""}.`,
           `Inventario: ${r.inventory.findings} hallazgo(s), ${r.inventory.runs} corrida(s), ${r.inventory.links} enlace(s).`,
           `Corridas restauradas: ${r.runsWritten}${r.runsSkipped ? ` (${r.runsSkipped} ya exist\xEDan, se conservaron)` : ""}.`,
           "Revisa el estado con inventory, runs_list y dast_scope."
@@ -41384,8 +41577,8 @@ server.registerTool(
       }
       const body = fmt === "md" ? toMarkdown(meta3, findings, incl, prev) : fmt === "html" ? toHtml(meta3, findings, incl, prev) : JSON.stringify(fmt === "sarif" ? toSarif(meta3, findings) : { meta: meta3, findings }, null, 2);
       const file2 = path13.resolve(a.output_path ?? path13.join(runDir(meta3.id), `informe.${fmt}`));
-      fs15.mkdirSync(path13.dirname(file2), { recursive: true });
-      fs15.writeFileSync(file2, body);
+      fs16.mkdirSync(path13.dirname(file2), { recursive: true });
+      fs16.writeFileSync(file2, body);
       return text(`Informe ${fmt.toUpperCase()} escrito en ${file2} (${meta3.summary.total} hallazgos activos).`);
     } catch (e) {
       return fail(e.message);
