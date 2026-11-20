@@ -32,7 +32,8 @@ activan solas cuando pides algo de su área, o puedes invocarlas por nombre.
 | `appsec-network` | Reconocimiento de red (puertos, TLS, servicios) | 🌑 sin acceso | Tier 1 / Tier 2 | capaz |
 | `appsec-dast` | Prueba dinámica de apps/APIs (Nuclei) | 🌑 sin acceso | Tier 1 / Tier 2 | capaz |
 | `appsec-audit` | Auditoría de código: SAST, SCA, secretos, IaC | 📄 código fuente | local | capaz |
-| `appsec-hosts` | Servidores Linux: CVE de paquetes y endurecimiento | 🌓 lectura / 🌕 credenciales | Tier 1 / Tier 2 | capaz |
+| `appsec-hosts` | Servidores Linux: CVE de paquetes y endurecimiento (+ Lynis) | 🌓 lectura / 🌕 credenciales | Tier 1 / Tier 2 | capaz |
+| `appsec-database` | Configuración de bases de datos (PostgreSQL): cifrado, auth, roles | 🌓 usuario de lectura | Tier 1 | capaz |
 | `appsec-triage` | Clasificar hallazgos con memoria entre corridas | transversal | — | capaz |
 | `appsec-fix` | Remediación guiada y verificación por diferencia | transversal | — | capaz |
 | `appsec-inventory` | Explorar sistemas y armar el ecosistema (tool `inventory`) | transversal | — | ligero |

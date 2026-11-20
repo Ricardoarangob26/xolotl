@@ -33,6 +33,7 @@ import { buildEvalPlan, findingHistory, inventorySummary, listAssets, queryFindi
 import { confirmFinding, VERDICT_ES } from "./confirm.js";
 import { untrustedSection } from "./untrusted.js";
 import { advisoryLynis, parseLynisReport, runLynisViaSsh } from "./lynis.js";
+import { dbAdvisory, parseDbCollected } from "./db.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -493,6 +494,38 @@ server.registerTool(
       const report = await runLynisViaSsh({ target: a.target, port: a.port, identityFile: a.identity_file, timeoutMs: minutes(a.timeout_minutes ?? 15) });
       const parsed = parseLynisReport(report, host);
       return text(await finishLynis(parsed, `ssh ${a.target}`));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "scan_db",
+  {
+    title: "Auditoría de configuración de base de datos",
+    description:
+      "Audita la configuración de seguridad de una base de datos con una cuenta de SOLO LECTURA: cifrado en tránsito (TLS), autenticación (pg_hba, hashing), exposición de red, superusuarios y auditoría. No se conecta ni instala nada: en modo advisory entrega el script SQL de solo lectura para correrlo a mano (flujo MobaXterm) y con collected_file parsea la salida. Primer motor: PostgreSQL.",
+    inputSchema: {
+      engine: z.enum(["postgresql"]).describe("Motor de base de datos (por ahora postgresql)"),
+      collected_file: z.string().optional().describe("Archivo con la salida del script SQL de solo lectura (psql -A -t -f pg-collect.sql)"),
+      target: z.string().optional().describe("Etiqueta del servidor/base para el inventario (host o nombre)"),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(dbAdvisory(a.engine, a.target));
+      const file = path.resolve(a.collected_file);
+      if (!fs.existsSync(file)) return fail(`No existe ${file}`);
+      const host = a.target?.trim() || "base-de-datos";
+      const parsed = parseDbCollected(a.engine, fs.readFileSync(file, "utf8"), host);
+      const { meta } = newRun("db", parsed.host, { engine: a.engine, version: parsed.version, source: file });
+      const o: Outcome = {
+        run: { tool: "db-audit", status: "ok", version: parsed.version, count: parsed.findings.length, message: `${a.engine}${parsed.version ? ` · ${parsed.version.slice(0, 40)}` : ""}` },
+        findings: parsed.findings,
+      };
+      return text(await finishRun(meta, [o], null));
     } catch (e) {
       return fail((e as Error).message);
     }

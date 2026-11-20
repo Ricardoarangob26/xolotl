@@ -39701,9 +39701,9 @@ async function collectViaSsh(o, script) {
   return r.stdout;
 }
 async function scanHostText(dir, text2, ignoreUnfixed, timeoutMs) {
-  const sections = parseCollected(text2);
-  const info = hostInfo(sections);
-  const checks = hardeningChecks(sections, info);
+  const sections2 = parseCollected(text2);
+  const info = hostInfo(sections2);
+  const checks = hardeningChecks(sections2, info);
   const config2 = {
     run: { tool: "xolotl-host", status: "ok", count: checks.length, message: `${info.osName} \xB7 kernel ${info.kernel} \xB7 ${info.root ? "con root" : "sin root (parcial)"}` },
     findings: checksToFindings(checks, info)
@@ -39712,7 +39712,7 @@ async function scanHostText(dir, text2, ignoreUnfixed, timeoutMs) {
     fs10.writeFileSync(path9.join(dir, "host-collect.txt"), text2);
     return { info, outcomes: [config2, { run: { tool: "trivy", status: "skipped", message: `distribuci\xF3n no soportada para vulnerabilidades (${info.osId})` }, findings: [] }] };
   }
-  const sbomFile = writeArtifacts(dir, text2, buildSbom(sections, info));
+  const sbomFile = writeArtifacts(dir, text2, buildSbom(sections2, info));
   const vulns = await guarded("trivy", async (t) => {
     const out = path9.join(dir, "trivy-host.json");
     const args = ["sbom", "--scanners", "vuln", "--format", "json", "--output", out, "--quiet", "--timeout", `${Math.round(timeoutMs / 6e4)}m`, ...ignoreUnfixed ? ["--ignore-unfixed"] : [], sbomFile];
@@ -40391,6 +40391,97 @@ async function runLynisViaSsh(o) {
   if (r.stdout.includes("LYNIS_NOT_INSTALLED")) throw new Error("Lynis no est\xE1 instalado en el objetivo. Inst\xE1lalo (apt/dnf install lynis) o usa el modo advisory y s\xFAbelo a mano.");
   if (!/hardening_index=|lynis_version=/.test(r.stdout)) throw new Error(`No se obtuvo el informe de Lynis por SSH (c\xF3digo ${r.code}). Revisa sudo/instalaci\xF3n, o usa advisory + report_file.`);
   return r.stdout;
+}
+
+// src/db.ts
+var PG_COLLECTOR = [
+  "\\echo ===XOLOTL meta===",
+  "SELECT 'version'||'|'||version();",
+  "\\echo ===XOLOTL settings===",
+  "SELECT name||'|'||setting FROM pg_settings WHERE name IN ('ssl','password_encryption','listen_addresses','log_connections','log_disconnections','log_statement','shared_preload_libraries','ssl_min_protocol_version') ORDER BY name;",
+  "\\echo ===XOLOTL roles===",
+  "SELECT rolname||'|'||rolsuper||'|'||rolcanlogin FROM pg_roles ORDER BY rolname;",
+  "\\echo ===XOLOTL hba===",
+  "SELECT COALESCE(type,'')||'|'||COALESCE(array_to_string(database,','),'')||'|'||COALESCE(array_to_string(user_name,','),'')||'|'||COALESCE(address,'')||'|'||COALESCE(auth_method,'') FROM pg_hba_file_rules ORDER BY line_number;"
+].join("\n");
+function dbAdvisory(engine, target) {
+  const where2 = target ? `la base ${target}` : "la base PostgreSQL";
+  return [
+    `## Tier 1 \xB7 advisory \u2014 auditor\xEDa de configuraci\xF3n de ${where2} (solo lectura)`,
+    "Ninguna consulta cambia datos. Basta una cuenta de lectura con permiso para ver la",
+    "configuraci\xF3n y los roles (por ejemplo un rol con pg_read_all_settings, o el propietario).",
+    "",
+    "1. Guarda este script como pg-collect.sql:",
+    "",
+    PG_COLLECTOR,
+    "",
+    "2. Ejec\xFAtalo en modo no alineado y vuelca la salida a un archivo:",
+    "     psql -X -A -t -h <host> -U <usuario_lectura> -d <base> -f pg-collect.sql > pg-audit.txt",
+    "   (pg_hba_file_rules necesita un rol con privilegio de lectura de configuraci\xF3n; si no lo",
+    "    tienes, el resto igual se audita y esa secci\xF3n vendr\xE1 vac\xEDa.)",
+    "",
+    "3. Volver: scan_db con engine=postgresql y collected_file=<ruta de pg-audit.txt>."
+  ].join("\n");
+}
+function sections(text2) {
+  const out = {};
+  let cur = "";
+  for (const raw of text2.split(/\r?\n/)) {
+    const m = raw.match(/^===XOLOTL (\w+)===/);
+    if (m) {
+      cur = m[1];
+      out[cur] = [];
+      continue;
+    }
+    if (cur && raw.trim()) out[cur].push(raw.trim());
+  }
+  return out;
+}
+function pgChecks(sec, host) {
+  const settings = {};
+  for (const l of sec.settings ?? []) {
+    const i = l.indexOf("|");
+    if (i > 0) settings[l.slice(0, i)] = l.slice(i + 1).trim();
+  }
+  const version2 = (sec.meta ?? []).map((l) => l.split("|").slice(1).join("|")).find(Boolean);
+  const hba = (sec.hba ?? []).map((l) => l.split("|")).filter((p) => p.length >= 5).map((p) => ({ type: p[0], database: p[1], user: p[2], address: p[3], method: p[4].toLowerCase() }));
+  const roles = (sec.roles ?? []).map((l) => l.split("|")).filter((p) => p.length >= 3).map((p) => ({ name: p[0], super: p[1] === "t", login: p[2] === "t" }));
+  const out = [];
+  const add = (rule, severity, title, description, remediation, evidence) => out.push({ tool: "db-audit", category: "config", severity, ruleId: rule, title, description, remediation, evidence, location: { target: host } });
+  const s = (k) => (settings[k] ?? "").toLowerCase();
+  if (s("ssl") === "off")
+    add("XOL-PG-SSL", "high", "PostgreSQL acepta conexiones sin cifrar", "Con ssl=off, las credenciales y los datos viajan en claro por la red y pueden interceptarse.", "Habilitar TLS (ssl=on) con certificado de la PKI interna y exigirlo en pg_hba (hostssl).", "ssl=off");
+  const ver = s("ssl_min_protocol_version");
+  if (ver === "tlsv1" || ver === "tlsv1.1")
+    add("XOL-PG-TLSMIN", "medium", `TLS m\xEDnimo obsoleto en PostgreSQL (${settings.ssl_min_protocol_version})`, "Permite negociar TLS 1.0/1.1, con debilidades conocidas.", "ssl_min_protocol_version = 'TLSv1.2' (o TLSv1.3).", `ssl_min_protocol_version=${settings.ssl_min_protocol_version}`);
+  if (s("password_encryption") === "md5")
+    add("XOL-PG-PWENC", "medium", "Hashing de contrase\xF1as MD5 en PostgreSQL", "MD5 para autenticaci\xF3n es d\xE9bil y se puede atacar; scram-sha-256 es el est\xE1ndar actual.", "password_encryption = scram-sha-256 y volver a fijar las contrase\xF1as para que se rehasheen.", "password_encryption=md5");
+  if (settings.listen_addresses && /(^|,)\s*\*/.test(settings.listen_addresses))
+    add("XOL-PG-LISTEN", "medium", "PostgreSQL escucha en todas las interfaces", "listen_addresses='*' expone el puerto a toda la red; combinado con reglas pg_hba amplias es alcanzable desde fuera.", "Escuchar solo en la interfaz interna/necesaria y filtrar el puerto en el firewall.", `listen_addresses=${settings.listen_addresses}`);
+  const trust = hba.filter((h) => h.method === "trust");
+  if (trust.length)
+    add("XOL-PG-HBA-TRUST", "critical", "Reglas pg_hba con autenticaci\xF3n 'trust'", "El m\xE9todo trust entra sin contrase\xF1a: cualquiera que alcance el puerto con ese usuario y base entra sin credenciales.", "Cambiar trust por scram-sha-256 (o cert) en todas las reglas salvo, como mucho, el socket local.", trust.map((h) => `${h.type} ${h.database} ${h.user} ${h.address} ${h.method}`).join("\n"));
+  const cleartext = hba.filter((h) => h.method === "password");
+  if (cleartext.length)
+    add("XOL-PG-HBA-PASSWORD", "high", "Reglas pg_hba con contrase\xF1a en claro ('password')", "El m\xE9todo password env\xEDa la contrase\xF1a en claro (solo protegido si adem\xE1s hay TLS).", "Usar scram-sha-256; si se usa password, exigir hostssl.", cleartext.map((h) => `${h.type} ${h.database} ${h.user} ${h.address} ${h.method}`).join("\n"));
+  const anyAddr = hba.filter((h) => /^(0\.0\.0\.0(\/0)?|::\/0|all)$/i.test(h.address) && h.type.toLowerCase().startsWith("host"));
+  if (anyAddr.length)
+    add("XOL-PG-HBA-ANY", "high", "Reglas pg_hba que aceptan cualquier origen", "Una regla host con origen 0.0.0.0/0 permite conexiones desde cualquier IP; reduce el control a la sola autenticaci\xF3n.", "Restringir el origen a las redes/hosts que de verdad se conectan.", anyAddr.map((h) => `${h.type} ${h.database} ${h.user} ${h.address} ${h.method}`).join("\n"));
+  const extraSupers = roles.filter((r) => r.super && r.login && r.name !== "postgres");
+  if (extraSupers.length)
+    add("XOL-PG-SUPERUSER", "medium", `Cuentas superusuario adem\xE1s de postgres (${extraSupers.length})`, "Cada superusuario puede leerlo y cambiarlo todo, incluida la auditor\xEDa. Son objetivos de alto valor y rompen el menor privilegio.", "Dejar superuser solo donde sea imprescindible; dar a las apps un rol acotado (sin SUPERUSER/CREATEROLE).", extraSupers.map((r) => r.name).join(", "));
+  if (s("log_connections") === "off" || s("log_disconnections") === "off")
+    add("XOL-PG-LOGCONN", "low", "PostgreSQL no registra conexiones", "Sin log_connections/log_disconnections no queda rastro de qui\xE9n se conect\xF3 y cu\xE1ndo, lo que dificulta investigar un incidente.", "log_connections=on y log_disconnections=on.", `log_connections=${settings.log_connections} log_disconnections=${settings.log_disconnections}`);
+  if (!/pgaudit/i.test(settings.shared_preload_libraries ?? "") && s("log_statement") !== "all")
+    add("XOL-PG-AUDIT", "low", "Auditor\xEDa de sentencias limitada en PostgreSQL", "Sin pgaudit y con log_statement distinto de ddl/all no hay traza de las operaciones sensibles sobre los datos.", "Cargar pgaudit (shared_preload_libraries) y configurar su pol\xEDtica, o al menos log_statement='ddl'.", `shared_preload_libraries=${settings.shared_preload_libraries ?? "(vac\xEDo)"} log_statement=${settings.log_statement ?? "?"}`);
+  return { findings: out, version: version2 };
+}
+function parseDbCollected(engine, text2, host = "base-de-datos") {
+  if (!/===XOLOTL (meta|settings|roles|hba)===/.test(text2))
+    throw new Error("La salida no trae las marcas ===XOLOTL \u2026===. Genera el archivo con el script que da scan_db en modo advisory (psql -A -t -f pg-collect.sql).");
+  const sec = sections(text2);
+  const { findings, version: version2 } = pgChecks(sec, host);
+  return { findings, version: version2, host };
 }
 
 // src/tier.ts
@@ -41104,6 +41195,36 @@ server.registerTool(
       const report = await runLynisViaSsh({ target: a.target, port: a.port, identityFile: a.identity_file, timeoutMs: minutes(a.timeout_minutes ?? 15) });
       const parsed = parseLynisReport(report, host);
       return text(await finishLynis(parsed, `ssh ${a.target}`));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
+  "scan_db",
+  {
+    title: "Auditor\xEDa de configuraci\xF3n de base de datos",
+    description: "Audita la configuraci\xF3n de seguridad de una base de datos con una cuenta de SOLO LECTURA: cifrado en tr\xE1nsito (TLS), autenticaci\xF3n (pg_hba, hashing), exposici\xF3n de red, superusuarios y auditor\xEDa. No se conecta ni instala nada: en modo advisory entrega el script SQL de solo lectura para correrlo a mano (flujo MobaXterm) y con collected_file parsea la salida. Primer motor: PostgreSQL.",
+    inputSchema: {
+      engine: external_exports.enum(["postgresql"]).describe("Motor de base de datos (por ahora postgresql)"),
+      collected_file: external_exports.string().optional().describe("Archivo con la salida del script SQL de solo lectura (psql -A -t -f pg-collect.sql)"),
+      target: external_exports.string().optional().describe("Etiqueta del servidor/base para el inventario (host o nombre)")
+    },
+    annotations: { readOnlyHint: true }
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(dbAdvisory(a.engine, a.target));
+      const file2 = path13.resolve(a.collected_file);
+      if (!fs16.existsSync(file2)) return fail(`No existe ${file2}`);
+      const host = a.target?.trim() || "base-de-datos";
+      const parsed = parseDbCollected(a.engine, fs16.readFileSync(file2, "utf8"), host);
+      const { meta: meta3 } = newRun("db", parsed.host, { engine: a.engine, version: parsed.version, source: file2 });
+      const o = {
+        run: { tool: "db-audit", status: "ok", version: parsed.version, count: parsed.findings.length, message: `${a.engine}${parsed.version ? ` \xB7 ${parsed.version.slice(0, 40)}` : ""}` },
+        findings: parsed.findings
+      };
+      return text(await finishRun(meta3, [o], null));
     } catch (e) {
       return fail(e.message);
     }
