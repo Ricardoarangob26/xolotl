@@ -3259,8 +3259,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path13) {
-      let input2 = path13;
+    function removeDotSegments(path14) {
+      let input2 = path14;
       const output2 = [];
       let nextSlash = -1;
       let len = 0;
@@ -3334,11 +3334,11 @@ var require_utils = __commonJS({
       }
       return output2.join("");
     }
-    function removeDotSegmentsRelative(path13) {
-      if (path13 === "" || path13[0] === "/") {
-        return removeDotSegments(path13);
+    function removeDotSegmentsRelative(path14) {
+      if (path14 === "" || path14[0] === "/") {
+        return removeDotSegments(path14);
       }
-      const segments = path13.split("/");
+      const segments = path14.split("/");
       const last = segments.length - 1;
       const output2 = [];
       let trailingDirectory = false;
@@ -3701,8 +3701,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path13 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path13 && path13 !== "/" ? path13 : void 0;
+        const path14 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path14 && path14 !== "/" ? path14 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7239,12 +7239,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs15, exportName) {
+    function addFormats(ajv, list, fs16, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs15[f]);
+        ajv.addFormat(f, fs16[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7253,8 +7253,8 @@ var require_dist = __commonJS({
 });
 
 // src/index.ts
-import fs14 from "node:fs";
-import path12 from "node:path";
+import fs15 from "node:fs";
+import path13 from "node:path";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -7630,8 +7630,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path13, errorMaps, issueData } = params;
-  const fullPath = [...path13, ...issueData.path || []];
+  const { data, path: path14, errorMaps, issueData } = params;
+  const fullPath = [...path14, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7746,11 +7746,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path13, key) {
+  constructor(parent, value, path14, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path13;
+    this._path = path14;
     this._key = key;
   }
   get path() {
@@ -11706,10 +11706,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path13) {
-  if (!path13)
+function getElementAtPath(obj, path14) {
+  if (!path14)
     return obj;
-  return path13.reduce((acc, key) => acc?.[key], obj);
+  return path14.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -12049,11 +12049,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path13, issues) {
+function prefixIssues(path14, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path13);
+    iss.path.unshift(path14);
     return iss;
   });
 }
@@ -12515,16 +12515,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path13 = []) => {
+  const processError = (error63, path14 = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path13, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path14, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
       } else {
-        const fullpath = [...path13, ...issue2.path];
+        const fullpath = [...path14, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -12563,17 +12563,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path13 = []) => {
+  const processError = (error63, path14 = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path13, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path14, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
       } else {
-        const fullpath = [...path13, ...issue2.path];
+        const fullpath = [...path14, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -12612,8 +12612,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path13 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path13) {
+  const path14 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path14) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -26352,13 +26352,13 @@ function _promise(Class2, innerType) {
 }
 // @__NO_SIDE_EFFECTS__
 function _custom(Class2, fn, _params) {
-  const norm = normalizeParams(_params);
-  norm.abort ?? (norm.abort = true);
+  const norm2 = normalizeParams(_params);
+  norm2.abort ?? (norm2.abort = true);
   const schema = new Class2({
     type: "custom",
     check: "custom",
     fn,
-    ...norm
+    ...norm2
   });
   return schema;
 }
@@ -28164,11 +28164,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path13) {
-  if (path13.length === 0) {
+function getDotPath(path14) {
+  if (path14.length === 0) {
     return "object root";
   }
-  return path13.reduce((acc, seg, index) => {
+  return path14.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -30395,13 +30395,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path13 = ref.slice(1).split("/").filter(Boolean);
-  if (path13.length === 0) {
+  const path14 = ref.slice(1).split("/").filter(Boolean);
+  if (path14.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path13[0] === defsKey) {
-    const key = path13[1] === void 0 ? void 0 : decodeJSONPointerSegment(path13[1]);
+  if (path14[0] === defsKey) {
+    const key = path14[1] === void 0 ? void 0 : decodeJSONPointerSegment(path14[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -39685,6 +39685,124 @@ function matchScope(target) {
 }
 var builtinScope = () => BUILTIN;
 
+// src/confirm.ts
+import fs12 from "node:fs";
+import path10 from "node:path";
+var inconclusive = (method, note) => ({ verdict: "inconclusive", method, note });
+var norm = (s) => s.replace(/\s+/g, " ").trim();
+function resolveFile(root, file2) {
+  return path10.isAbsolute(file2) ? file2 : path10.join(root, file2);
+}
+function readFileSafe(abs) {
+  try {
+    const st = fs12.statSync(abs);
+    if (!st.isFile() || st.size > 5 * 1024 * 1024) return null;
+    return fs12.readFileSync(abs, "utf8");
+  } catch {
+    return null;
+  }
+}
+var pkgNameVariants = (name) => {
+  const low = name.toLowerCase();
+  return [.../* @__PURE__ */ new Set([name, low, low.replace(/[-_.]+/g, "-"), low.replace(/[-_.]+/g, "_")])];
+};
+function confirmSca(f, root) {
+  const file2 = f.location?.file;
+  const pkg = f.package;
+  if (!file2 || !pkg?.name || !pkg.version) return inconclusive("\u2014", "El hallazgo no apunta a un manifiesto con paquete y versi\xF3n; revalida con scan_static sobre el proyecto.");
+  const abs = resolveFile(root, file2);
+  const text2 = readFileSafe(abs);
+  if (text2 == null) return inconclusive(`leer ${file2}`, "No pude leer el manifiesto (\xBFse movi\xF3 o es otra m\xE1quina?). Revalida reescaneando el proyecto.");
+  const names = pkgNameVariants(pkg.name);
+  const lines = text2.split(/\r?\n/);
+  const ver = pkg.version;
+  const hasVer = (l) => l.includes(ver);
+  const hasName = (l) => names.some((n) => l.toLowerCase().includes(n.toLowerCase()));
+  const pinned = lines.find((l) => hasName(l) && hasVer(l));
+  if (pinned) {
+    return {
+      verdict: "confirmed",
+      method: `buscar ${pkg.name}==${ver} en ${file2}`,
+      note: `El manifiesto sigue fijando ${pkg.name} ${ver}${pkg.fixedVersion ? `, por debajo de la correcci\xF3n ${pkg.fixedVersion}` : ""}. Actualiza la dependencia y reescanea.`,
+      evidence: norm(pinned).slice(0, 160)
+    };
+  }
+  if (lines.some(hasName)) {
+    return {
+      verdict: "not_present",
+      method: `buscar ${pkg.name}==${ver} en ${file2}`,
+      note: `${pkg.name} sigue en ${file2} pero ya no con la versi\xF3n ${ver}. Reescanea para confirmar que la nueva versi\xF3n no tiene otras CVE.`
+    };
+  }
+  return { verdict: "not_present", method: `buscar ${pkg.name} en ${file2}`, note: `${pkg.name} ya no aparece en ${file2}. Reescanea para cerrar el hallazgo.` };
+}
+function confirmFileAnchored(f, root) {
+  const file2 = f.location?.file;
+  if (!file2) return inconclusive("\u2014", "El hallazgo no apunta a un archivo local; revalida reescaneando.");
+  const abs = resolveFile(root, file2);
+  const text2 = readFileSafe(abs);
+  if (text2 == null) return inconclusive(`leer ${file2}`, "No pude leer el archivo (\xBFse movi\xF3, se borr\xF3 o es otra m\xE1quina?). No asumo que est\xE9 corregido.");
+  const lines = text2.split(/\r?\n/);
+  const line = f.location?.startLine;
+  const isSecret = f.category === "secret";
+  const method = `releer ${file2}${line ? `:${line}` : ""}`;
+  const snippet = f.snippet ? norm(f.snippet) : "";
+  if (snippet) {
+    const atLine = line && lines[line - 1] ? norm(lines[line - 1]) : "";
+    const stillAtLine = atLine && (atLine.includes(snippet) || snippet.includes(atLine));
+    const stillInFile = norm(text2).includes(snippet);
+    if (stillAtLine || stillInFile) {
+      return {
+        verdict: "confirmed",
+        method,
+        note: stillAtLine ? `El c\xF3digo se\xF1alado no cambi\xF3 en ${file2}${line ? `:${line}` : ""}.` : `El c\xF3digo se\xF1alado sigue en ${file2} aunque cambi\xF3 de l\xEDnea. ${isSecret ? "El secreto sigue expuesto: rev\xF3calo y r\xF3talo." : "Reescanea para confirmar que la regla lo sigue marcando."}`,
+        evidence: isSecret ? "coincidencia de secreto presente (valor omitido)" : snippet.slice(0, 160)
+      };
+    }
+    return {
+      verdict: "not_present",
+      method,
+      note: `El c\xF3digo se\xF1alado ya no est\xE1 en ${file2}. Probablemente corregido; reescanea con la herramienta original para cerrarlo${isSecret ? ". Aun as\xED, rota el secreto: estuvo expuesto en el historial" : ""}.`
+    };
+  }
+  if (isSecret && line) {
+    if (!lines[line - 1]?.trim()) return { verdict: "not_present", method, note: `La l\xEDnea ${line} de ${file2} est\xE1 vac\xEDa o desapareci\xF3. Rota el secreto igualmente: estuvo expuesto.` };
+    return inconclusive(method, `No tengo el patr\xF3n exacto del secreto para compararlo sin exponerlo. Revisa ${file2}:${line} a mano o reescanea con gitleaks.`);
+  }
+  return inconclusive(method, "No tengo un patr\xF3n para comparar; reescanea con la herramienta original.");
+}
+function confirmLive(f) {
+  const how = {
+    network: "scan_network sobre el host (respeta el alcance y el Tier)",
+    config: "scan_host con el recolector o por SSH",
+    host: "scan_host con el recolector o por SSH",
+    dast: "scan_dast contra el objetivo autorizado en dast_scope",
+    container: "scan_container_image sobre la imagen"
+  };
+  const tool = how[f.category] ?? "el escaneo correspondiente";
+  return inconclusive(
+    "ninguna (revalidaci\xF3n local no aplica)",
+    `Revalidar un hallazgo de ${f.category} exige volver a probar el activo, que no es una comprobaci\xF3n local. Repite ${tool} y compara con runs_diff. No lo doy por corregido sin esa prueba.`
+  );
+}
+function confirmFinding(f, root) {
+  switch (f.category) {
+    case "sca":
+      return confirmSca(f, root);
+    case "sast":
+    case "iac":
+    case "secret":
+      return confirmFileAnchored(f, root);
+    default:
+      return confirmLive(f);
+  }
+}
+var VERDICT_ES = {
+  confirmed: "CONFIRMADO",
+  not_present: "RESUELTO",
+  inconclusive: "NO CONCLUYENTE"
+};
+
 // src/tier.ts
 var defaultMode = () => (process.env.XOLOTL_MODE ?? "").trim().toLowerCase() === "advisory" ? "advisory" : "execute";
 var resolveMode = (requested) => requested ?? defaultMode();
@@ -39754,12 +39872,12 @@ function advisoryHost(scriptPath) {
 }
 
 // src/risk.ts
-import fs12 from "node:fs";
-import path10 from "node:path";
+import fs13 from "node:fs";
+import path11 from "node:path";
 import zlib from "node:zlib";
-var FEEDS_DIR = path10.join(HOME, "feeds");
-var KEV_FILE = path10.join(FEEDS_DIR, "kev.json");
-var EPSS_FILE = path10.join(FEEDS_DIR, "epss.csv");
+var FEEDS_DIR = path11.join(HOME, "feeds");
+var KEV_FILE = path11.join(FEEDS_DIR, "kev.json");
+var EPSS_FILE = path11.join(FEEDS_DIR, "epss.csv");
 var KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json";
 var EPSS_URL = "https://epss.cyentia.com/epss_scores-current.csv.gz";
 var SEV_BASE = { critical: 9.5, high: 8, medium: 5.5, low: 3, info: 0.5 };
@@ -39768,7 +39886,7 @@ var _epss;
 function loadKev() {
   if (_kev !== void 0) return _kev;
   try {
-    const raw = JSON.parse(fs12.readFileSync(KEV_FILE, "utf8"));
+    const raw = JSON.parse(fs13.readFileSync(KEV_FILE, "utf8"));
     const set2 = /* @__PURE__ */ new Set();
     for (const v of raw.vulnerabilities ?? []) if (v.cveID) set2.add(String(v.cveID).toUpperCase());
     _kev = set2.size ? set2 : null;
@@ -39781,7 +39899,7 @@ function loadEpss() {
   if (_epss !== void 0) return _epss;
   try {
     const map2 = /* @__PURE__ */ new Map();
-    for (const line of fs12.readFileSync(EPSS_FILE, "utf8").split(/\r?\n/)) {
+    for (const line of fs13.readFileSync(EPSS_FILE, "utf8").split(/\r?\n/)) {
       if (!line || line[0] === "#") continue;
       const [rawCve, rawEpss] = line.split(",");
       const cve = rawCve?.toUpperCase();
@@ -39854,7 +39972,7 @@ function enrichRisk(findings, fallbackTarget) {
 }
 var fileDate = (p) => {
   try {
-    return fs12.statSync(p).mtime.toISOString().slice(0, 10);
+    return fs13.statSync(p).mtime.toISOString().slice(0, 10);
   } catch {
     return void 0;
   }
@@ -39873,13 +39991,13 @@ function feedStatus() {
 }
 async function refreshFeeds(which2 = "all") {
   ensureDirs();
-  fs12.mkdirSync(FEEDS_DIR, { recursive: true });
+  fs13.mkdirSync(FEEDS_DIR, { recursive: true });
   const out = [];
   if (which2 === "all" || which2 === "kev") {
     try {
       const res = await fetch(KEV_URL, { headers: { "User-Agent": "xolotl" } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      fs12.writeFileSync(KEV_FILE, Buffer.from(await res.arrayBuffer()));
+      fs13.writeFileSync(KEV_FILE, Buffer.from(await res.arrayBuffer()));
       _kev = void 0;
       out.push(`\u2713 KEV actualizado: ${loadKev()?.size ?? 0} CVE con explotaci\xF3n activa`);
     } catch (e) {
@@ -39891,7 +40009,7 @@ async function refreshFeeds(which2 = "all") {
       const res = await fetch(EPSS_URL, { headers: { "User-Agent": "xolotl" } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const csv = zlib.gunzipSync(Buffer.from(await res.arrayBuffer()));
-      fs12.writeFileSync(EPSS_FILE, csv);
+      fs13.writeFileSync(EPSS_FILE, csv);
       _epss = void 0;
       out.push(`\u2713 EPSS actualizado: ${loadEpss()?.size ?? 0} CVE con probabilidad`);
     } catch (e) {
@@ -39902,26 +40020,26 @@ async function refreshFeeds(which2 = "all") {
 }
 
 // src/handoff.ts
-import fs13 from "node:fs";
-import path11 from "node:path";
+import fs14 from "node:fs";
+import path12 from "node:path";
 var HANDOFF_VERSION = "1";
 function readAllRuns() {
   let dirs = [];
   try {
-    dirs = fs13.readdirSync(RUNS_DIR);
+    dirs = fs14.readdirSync(RUNS_DIR);
   } catch {
     return [];
   }
   const out = [];
   for (const id of dirs) {
-    const metaPath = path11.join(RUNS_DIR, id, "meta.json");
-    const findingsPath = path11.join(RUNS_DIR, id, "findings.json");
-    if (!fs13.existsSync(metaPath) || !fs13.existsSync(findingsPath)) continue;
+    const metaPath = path12.join(RUNS_DIR, id, "meta.json");
+    const findingsPath = path12.join(RUNS_DIR, id, "findings.json");
+    if (!fs14.existsSync(metaPath) || !fs14.existsSync(findingsPath)) continue;
     try {
       out.push({
         id,
-        meta: JSON.parse(fs13.readFileSync(metaPath, "utf8")),
-        findings: JSON.parse(fs13.readFileSync(findingsPath, "utf8"))
+        meta: JSON.parse(fs14.readFileSync(metaPath, "utf8")),
+        findings: JSON.parse(fs14.readFileSync(findingsPath, "utf8"))
       });
     } catch {
     }
@@ -39944,10 +40062,10 @@ function writeHandoff(file2, includeRuns) {
   ensureDirs();
   const h = buildHandoff(includeRuns);
   const json2 = JSON.stringify(h, null, 2);
-  fs13.mkdirSync(path11.dirname(path11.resolve(file2)), { recursive: true });
-  fs13.writeFileSync(file2, json2);
+  fs14.mkdirSync(path12.dirname(path12.resolve(file2)), { recursive: true });
+  fs14.writeFileSync(file2, json2);
   return {
-    file: path11.resolve(file2),
+    file: path12.resolve(file2),
     bytes: Buffer.byteLength(json2),
     scope: h.scope.length,
     triage: Object.keys(h.triage).length,
@@ -39957,7 +40075,7 @@ function writeHandoff(file2, includeRuns) {
   };
 }
 function readHandoff(file2, opts = {}) {
-  const raw = fs13.readFileSync(file2, "utf8");
+  const raw = fs14.readFileSync(file2, "utf8");
   let h;
   try {
     h = JSON.parse(raw);
@@ -39976,15 +40094,15 @@ function readHandoff(file2, opts = {}) {
   if (opts.includeRuns !== false) {
     ensureDirs();
     for (const r of h.runs ?? []) {
-      const dir = path11.join(RUNS_DIR, path11.basename(r.id));
-      if (fs13.existsSync(path11.join(dir, "meta.json")) && !replace) {
+      const dir = path12.join(RUNS_DIR, path12.basename(r.id));
+      if (fs14.existsSync(path12.join(dir, "meta.json")) && !replace) {
         runsSkipped++;
         continue;
       }
       try {
-        fs13.mkdirSync(dir, { recursive: true });
-        fs13.writeFileSync(path11.join(dir, "meta.json"), JSON.stringify(r.meta, null, 2));
-        fs13.writeFileSync(path11.join(dir, "findings.json"), JSON.stringify(r.findings, null, 2));
+        fs14.mkdirSync(dir, { recursive: true });
+        fs14.writeFileSync(path12.join(dir, "meta.json"), JSON.stringify(r.meta, null, 2));
+        fs14.writeFileSync(path12.join(dir, "findings.json"), JSON.stringify(r.findings, null, 2));
         runsWritten++;
       } catch {
       }
@@ -40009,8 +40127,8 @@ function progress(extra, done, total, message) {
   });
 }
 function resolveDir(p) {
-  const abs = path12.resolve(p);
-  if (!fs14.existsSync(abs) || !fs14.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
+  const abs = path13.resolve(p);
+  if (!fs15.existsSync(abs) || !fs15.statSync(abs).isDirectory()) throw new Error(`No existe la carpeta ${abs}`);
   return abs;
 }
 function summaryText(meta3, findings, top = 15) {
@@ -40289,9 +40407,9 @@ server.registerTool(
   },
   async ({ output_path }) => {
     ensureDirs();
-    const file2 = path12.resolve(output_path ?? path12.join(HOME, "xolotl-collect.sh"));
-    fs14.mkdirSync(path12.dirname(file2), { recursive: true });
-    fs14.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+    const file2 = path13.resolve(output_path ?? path13.join(HOME, "xolotl-collect.sh"));
+    fs15.mkdirSync(path13.dirname(file2), { recursive: true });
+    fs15.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
     return text(
       [
         `Script escrito en ${file2} (${collector_default.split("\n").length} l\xEDneas, solo lectura: no instala ni cambia nada y no copia secretos).`,
@@ -40326,9 +40444,9 @@ server.registerTool(
     if (!!a.target === !!a.collected_file) return fail("Indica target (SSH) o collected_file, uno de los dos.");
     if (a.target && resolveMode(a.mode) === "advisory") {
       ensureDirs();
-      const file2 = path12.join(HOME, "xolotl-collect.sh");
-      fs14.mkdirSync(path12.dirname(file2), { recursive: true });
-      fs14.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
+      const file2 = path13.join(HOME, "xolotl-collect.sh");
+      fs15.mkdirSync(path13.dirname(file2), { recursive: true });
+      fs15.writeFileSync(file2, collector_default.replace(/\r\n/g, "\n"));
       return text(advisoryHost(file2));
     }
     const timeoutMs = minutes(a.timeout_minutes ?? 15);
@@ -40344,9 +40462,9 @@ server.registerTool(
         collected = await collectViaSsh({ target: a.target, port: a.port, identityFile: a.identity_file, sudo: a.sudo ?? true, timeoutMs }, collector_default);
         via = `ssh ${a.target}`;
       } else {
-        const file2 = path12.resolve(a.collected_file);
-        if (!fs14.existsSync(file2)) return fail(`No existe ${file2}`);
-        collected = fs14.readFileSync(file2, "utf8");
+        const file2 = path13.resolve(a.collected_file);
+        if (!fs15.existsSync(file2)) return fail(`No existe ${file2}`);
+        collected = fs15.readFileSync(file2, "utf8");
         via = file2;
       }
     } catch (e) {
@@ -40548,7 +40666,7 @@ server.registerTool(
             const mark = ln >= loc.startLine && ln <= (loc.endLine ?? loc.startLine) ? ">" : " ";
             return `${mark}${String(ln).padStart(5)} | ${l}`;
           }).join("\n");
-          out.push("", `C\xF3digo (${path12.join(root, loc.file)}):`, numbered);
+          out.push("", `C\xF3digo (${path13.join(root, loc.file)}):`, numbered);
         }
       }
       return text(out.join("\n"));
@@ -40612,6 +40730,58 @@ server.registerTool(
         ...added.length ? ["", "Nuevos (revisar):", ...added.map((f) => `  ${oneLine(f)}`)] : []
       ];
       return text(out.join("\n"));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
+  "revalidate",
+  {
+    title: "Revalidar un hallazgo (no destructivo)",
+    description: "Vuelve a comprobar hallazgos concretos de una corrida de forma local, determinista y SIN tocar ning\xFAn sistema (no env\xEDa exploits, no se conecta, no modifica nada): relee los archivos ya escaneados. Devuelve un veredicto de tres estados por hallazgo: CONFIRMADO (la condici\xF3n sigue), RESUELTO (ya no est\xE1; reescanea para cerrarlo) o NO CONCLUYENTE (no se pudo comprobar aqu\xED). Principio: el motor decide el veredicto, no el modelo. Revalida en local SCA/c\xF3digo/secretos/IaC; red/host/DAST requieren repetir su escaneo. Con apply_triage marca como corregido lo RESUELTO y confirmado lo CONFIRMADO.",
+    inputSchema: {
+      finding_ids: external_exports.array(external_exports.string()).optional().describe("IDs (F-001\u2026) o huellas a revalidar; por defecto, todos los activos de la corrida"),
+      run_id: external_exports.string().optional().describe("Corrida de referencia; por defecto la m\xE1s reciente"),
+      apply_triage: external_exports.boolean().optional().describe("Si true, marca RESUELTO como 'fixed' y CONFIRMADO como 'confirmed' (por defecto false: solo informa)")
+    },
+    annotations: { readOnlyHint: true }
+  },
+  async (a) => {
+    try {
+      const { meta: meta3, findings } = loadRun(a.run_id);
+      const want = a.finding_ids?.length ? new Set(a.finding_ids) : null;
+      const picked = findings.filter((f) => !isSuppressed(f) && (!want || want.has(f.id) || want.has(f.fingerprint)));
+      if (!picked.length) return text(want ? "Ninguno de esos hallazgos est\xE1 activo en la corrida. Usa report_generate o findings_query para ver los IDs." : "La corrida no tiene hallazgos activos que revalidar.");
+      const root = meta3.target;
+      const tally = { confirmed: 0, not_present: 0, inconclusive: 0 };
+      const resolved = [];
+      const confirmed = [];
+      const lines = picked.map((f) => {
+        const c = confirmFinding(f, root);
+        tally[c.verdict]++;
+        if (c.verdict === "not_present") resolved.push(f);
+        if (c.verdict === "confirmed") confirmed.push(f);
+        const ev = c.evidence ? `
+    evidencia: ${c.evidence}` : "";
+        return `${VERDICT_ES[c.verdict]} \xB7 ${f.id} ${f.category} \u2014 ${f.title.length > 80 ? f.title.slice(0, 80) + "\u2026" : f.title}
+    m\xE9todo: ${c.method}
+    ${c.note}${ev}`;
+      });
+      let applied = "";
+      if (a.apply_triage) {
+        if (resolved.length) setTriage(resolved, "fixed", "Revalidaci\xF3n: el patr\xF3n ya no est\xE1 presente.");
+        if (confirmed.length) setTriage(confirmed, "confirmed", "Revalidaci\xF3n: la condici\xF3n sigue presente.");
+        applied = `
+
+Triage aplicado: ${resolved.length} marcado(s) corregido(s), ${confirmed.length} confirmado(s). La pr\xF3xima corrida lo recordar\xE1 por huella.`;
+      } else if (resolved.length || confirmed.length) {
+        applied = `
+
+Para fijar estas decisiones usa apply_triage=true (o finding_triage a mano).`;
+      }
+      const head = `Revalidaci\xF3n de ${picked.length} hallazgo(s) de ${meta3.id}: ${tally.confirmed} confirmado(s) \xB7 ${tally.not_present} resuelto(s) \xB7 ${tally.inconclusive} no concluyente(s).`;
+      return text([head, "", ...lines].join("\n") + applied);
     } catch (e) {
       return fail(e.message);
     }
@@ -40833,7 +41003,7 @@ server.registerTool(
           ].join("\n")
         );
       }
-      if (!fs14.existsSync(a.path)) return fail(`No existe el archivo ${a.path}.`);
+      if (!fs15.existsSync(a.path)) return fail(`No existe el archivo ${a.path}.`);
       const r = readHandoff(a.path, { replace: a.replace, includeRuns: a.include_runs });
       return text(
         [
@@ -40877,9 +41047,9 @@ server.registerTool(
         }
       }
       const body = fmt === "md" ? toMarkdown(meta3, findings, incl, prev) : fmt === "html" ? toHtml(meta3, findings, incl, prev) : JSON.stringify(fmt === "sarif" ? toSarif(meta3, findings) : { meta: meta3, findings }, null, 2);
-      const file2 = path12.resolve(a.output_path ?? path12.join(runDir(meta3.id), `informe.${fmt}`));
-      fs14.mkdirSync(path12.dirname(file2), { recursive: true });
-      fs14.writeFileSync(file2, body);
+      const file2 = path13.resolve(a.output_path ?? path13.join(runDir(meta3.id), `informe.${fmt}`));
+      fs15.mkdirSync(path13.dirname(file2), { recursive: true });
+      fs15.writeFileSync(file2, body);
       return text(`Informe ${fmt.toUpperCase()} escrito en ${file2} (${meta3.summary.total} hallazgos activos).`);
     } catch (e) {
       return fail(e.message);

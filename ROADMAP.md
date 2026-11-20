@@ -50,7 +50,7 @@ copiar agentes, sino que cada dominio defensivo o de evaluación tenga motor, sk
 | Recomendación (`/recommend`, `/agents-for`) | ✅ `inventory view=next` propone qué evaluar por activo | — |
 | Puntuación de riesgo (`risk-scorer`) | ✅ EPSS + CISA KEV sobre la severidad (`risk_feeds`) | — |
 | Cumplimiento (`compliance-mapper`, `stig-analyst`) | 🟡 CWE por hallazgo | Mapeo a marcos → Fase 1.5; STIG/CIS → Fase 2 |
-| Validación (`poc-validator`) | 🟡 Nuclei confirma por plantilla | Revalidación no destructiva → Fase 1.5 |
+| Validación (`poc-validator`) | ✅ `revalidate` (veredicto de 3 estados, no destructivo) + Nuclei por plantilla | — |
 | Planeación (`engagement-planner`, `attack-planner`) | 🟡 `dast_scope` (alcance) | Reglas de enfrentamiento + ATT&CK → Fase 1.5 |
 | Nube y contenedores (`cloud-security`, `container-breakout`) | 🟡 imágenes e IaC | Prowler (Fase 2) + postura de Kubernetes → Fase 2 |
 | Directorio Activo (`ad-attacker`, `password-auditor`) | ❌ | Postura de AD de solo lectura → Fase 2 |
@@ -86,7 +86,7 @@ Es lo más barato y lo que más valor agrega: todo lo que ya se escanea gana con
 | **Traspaso de compromiso** ✅ | Tool `handoff` (export/import): un archivo JSON con alcance, triage, criticidad de activos, inventario acumulado y los artefactos de cada corrida, para retomar en otra sesión o máquina (fusión o reemplazo). No incluye los feeds (se rebajan con `risk_feeds`). | `handoff.sh` |
 | **Siguiente paso sugerido** ✅ | `inventory view=next`: por activo, infiere su tipo (host, web, código, imagen), muestra una matriz de cobertura (qué pruebas aplican y cuáles ya corrieron) y propone las que faltan con su nivel (código/app/máquina) y el acceso que necesitan. Lee señales del propio inventario —puertos abiertos del hallazgo de red, p. ej. "puerto web 8080 abierto y sin DAST"; "host sin revisión de configuración"; "SAST hecho, falta CodeQL/IaC"— y ordena por criticidad del activo. Es el mapa de "qué tanto le puedo evaluar a cada sistema". | `/recommend` |
 | **Plan de evaluación por activo** ✅ | Tool `eval_plan` + skill `appsec-plan`: encadena los huecos de `inventory view=next` en un plan ordenado por fases (superficie sin credenciales → código → configuración interna → aplicación autorizada). Cada paso trae su nivel (código/app/máquina), su Tier por defecto y el acceso que pide; `access=[...]` separa lo ejecutable ahora de lo que espera acceso, y la criticidad del activo ordena dentro de cada fase. No ejecuta: es el guion. | `swarm-orchestrator` |
-| **Revalidación no destructiva** | Repetir solo la verificación de un hallazgo (plantilla o regla puntual) para confirmar o descartar sin repetir toda la corrida. | `poc-validator` |
+| **Revalidación no destructiva** ✅ | Tool `revalidate`: vuelve a comprobar un hallazgo concreto de forma local, determinista y sin tocar sistemas (relee los archivos ya escaneados), con **veredicto de 3 estados** — CONFIRMADO / RESUELTO / NO CONCLUYENTE. Confirmadores locales para SCA (¿el manifiesto sigue fijando la versión vulnerable?), código, secretos e IaC; red/host/DAST devuelven NO CONCLUYENTE con la tool a repetir. "No pude comprobarlo" nunca es "ya no existe". Con `apply_triage` marca lo resuelto como corregido y lo confirmado. Principio «el motor decide el veredicto, no el modelo». | `poc-validator` |
 | **Migraciones de esquema** | Versión del esquema en la BD y migraciones idempotentes. | `migrate.sh` |
 | **Modelo por skill** | Pista `model:` en skills que solo asesoran (planeación, mapeo, informe), para usar uno barato o local. | `-Lite` |
 

@@ -29,6 +29,7 @@ import COLLECTOR from "./collector.sh";
 import { addScope, builtinScope, expandTargets, loadScope, matchScope, removeScope } from "./scope.js";
 import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage } from "./store.js";
 import { buildEvalPlan, findingHistory, inventorySummary, listAssets, queryFindings, suggestNextSteps } from "./inventory.js";
+import { confirmFinding, VERDICT_ES } from "./confirm.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -719,6 +720,53 @@ server.registerTool(
         ...(added.length ? ["", "Nuevos (revisar):", ...added.map((f) => `  ${oneLine(f)}`)] : []),
       ];
       return text(out.join("\n"));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "revalidate",
+  {
+    title: "Revalidar un hallazgo (no destructivo)",
+    description:
+      "Vuelve a comprobar hallazgos concretos de una corrida de forma local, determinista y SIN tocar ningún sistema (no envía exploits, no se conecta, no modifica nada): relee los archivos ya escaneados. Devuelve un veredicto de tres estados por hallazgo: CONFIRMADO (la condición sigue), RESUELTO (ya no está; reescanea para cerrarlo) o NO CONCLUYENTE (no se pudo comprobar aquí). Principio: el motor decide el veredicto, no el modelo. Revalida en local SCA/código/secretos/IaC; red/host/DAST requieren repetir su escaneo. Con apply_triage marca como corregido lo RESUELTO y confirmado lo CONFIRMADO.",
+    inputSchema: {
+      finding_ids: z.array(z.string()).optional().describe("IDs (F-001…) o huellas a revalidar; por defecto, todos los activos de la corrida"),
+      run_id: z.string().optional().describe("Corrida de referencia; por defecto la más reciente"),
+      apply_triage: z.boolean().optional().describe("Si true, marca RESUELTO como 'fixed' y CONFIRMADO como 'confirmed' (por defecto false: solo informa)"),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async (a) => {
+    try {
+      const { meta, findings } = loadRun(a.run_id);
+      const want = a.finding_ids?.length ? new Set(a.finding_ids) : null;
+      const picked = findings.filter((f) => !isSuppressed(f) && (!want || want.has(f.id) || want.has(f.fingerprint)));
+      if (!picked.length) return text(want ? "Ninguno de esos hallazgos está activo en la corrida. Usa report_generate o findings_query para ver los IDs." : "La corrida no tiene hallazgos activos que revalidar.");
+      const root = meta.target;
+      const tally: Record<string, number> = { confirmed: 0, not_present: 0, inconclusive: 0 };
+      const resolved: Finding[] = [];
+      const confirmed: Finding[] = [];
+      const lines = picked.map((f) => {
+        const c = confirmFinding(f, root);
+        tally[c.verdict]++;
+        if (c.verdict === "not_present") resolved.push(f);
+        if (c.verdict === "confirmed") confirmed.push(f);
+        const ev = c.evidence ? `\n    evidencia: ${c.evidence}` : "";
+        return `${VERDICT_ES[c.verdict]} · ${f.id} ${f.category} — ${f.title.length > 80 ? f.title.slice(0, 80) + "…" : f.title}\n    método: ${c.method}\n    ${c.note}${ev}`;
+      });
+      let applied = "";
+      if (a.apply_triage) {
+        if (resolved.length) setTriage(resolved, "fixed", "Revalidación: el patrón ya no está presente.");
+        if (confirmed.length) setTriage(confirmed, "confirmed", "Revalidación: la condición sigue presente.");
+        applied = `\n\nTriage aplicado: ${resolved.length} marcado(s) corregido(s), ${confirmed.length} confirmado(s). La próxima corrida lo recordará por huella.`;
+      } else if (resolved.length || confirmed.length) {
+        applied = `\n\nPara fijar estas decisiones usa apply_triage=true (o finding_triage a mano).`;
+      }
+      const head = `Revalidación de ${picked.length} hallazgo(s) de ${meta.id}: ${tally.confirmed} confirmado(s) · ${tally.not_present} resuelto(s) · ${tally.inconclusive} no concluyente(s).`;
+      return text([head, "", ...lines].join("\n") + applied);
     } catch (e) {
       return fail((e as Error).message);
     }
