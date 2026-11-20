@@ -37943,6 +37943,109 @@ function attackFor(f) {
   return out.slice(0, 3);
 }
 
+// src/compliance.ts
+var FRAMEWORKS = ["OWASP 2021", "PCI DSS 4.0", "NIST 800-53", "ISO 27001:2022", "CIS v8"];
+var frameworkRank = (fw) => {
+  const i = FRAMEWORKS.indexOf(fw);
+  return i < 0 ? FRAMEWORKS.length : i;
+};
+var THEME_CONTROLS = {
+  injection: [
+    { framework: "OWASP 2021", id: "A03", title: "Inyecci\xF3n" },
+    { framework: "PCI DSS 4.0", id: "6.2.4", title: "Codificaci\xF3n segura frente a inyecci\xF3n" },
+    { framework: "NIST 800-53", id: "SI-10", title: "Information Input Validation" },
+    { framework: "ISO 27001:2022", id: "A.8.28", title: "Codificaci\xF3n segura" },
+    { framework: "CIS v8", id: "16.11", title: "Validaci\xF3n de entrada en el software" }
+  ],
+  secrets: [
+    { framework: "OWASP 2021", id: "A07", title: "Fallos de identificaci\xF3n y autenticaci\xF3n" },
+    { framework: "PCI DSS 4.0", id: "8.6.2", title: "Credenciales no embebidas en c\xF3digo/scripts" },
+    { framework: "NIST 800-53", id: "IA-5", title: "Authenticator Management" },
+    { framework: "ISO 27001:2022", id: "A.5.17", title: "Informaci\xF3n de autenticaci\xF3n" }
+  ],
+  crypto: [
+    { framework: "OWASP 2021", id: "A02", title: "Fallos criptogr\xE1ficos" },
+    { framework: "PCI DSS 4.0", id: "4.2.1", title: "Criptograf\xEDa fuerte en el transporte" },
+    { framework: "NIST 800-53", id: "SC-13", title: "Cryptographic Protection" },
+    { framework: "ISO 27001:2022", id: "A.8.24", title: "Uso de criptograf\xEDa" },
+    { framework: "CIS v8", id: "3.10", title: "Cifrar datos sensibles en tr\xE1nsito" }
+  ],
+  authn: [
+    { framework: "OWASP 2021", id: "A07", title: "Fallos de identificaci\xF3n y autenticaci\xF3n" },
+    { framework: "PCI DSS 4.0", id: "8.3.1", title: "Autenticaci\xF3n fuerte de usuarios" },
+    { framework: "NIST 800-53", id: "IA-2", title: "Identification and Authentication" },
+    { framework: "ISO 27001:2022", id: "A.8.5", title: "Autenticaci\xF3n segura" },
+    { framework: "CIS v8", id: "6.3", title: "Autenticaci\xF3n multifactor" }
+  ],
+  privilege: [
+    { framework: "OWASP 2021", id: "A01", title: "P\xE9rdida de control de acceso" },
+    { framework: "PCI DSS 4.0", id: "7.2.1", title: "Acceso por menor privilegio" },
+    { framework: "NIST 800-53", id: "AC-6", title: "Least Privilege" },
+    { framework: "ISO 27001:2022", id: "A.8.2", title: "Derechos de acceso privilegiado" },
+    { framework: "CIS v8", id: "5.4", title: "Restringir privilegios de administrador" }
+  ],
+  vulnmgmt: [
+    { framework: "OWASP 2021", id: "A06", title: "Componentes vulnerables y desactualizados" },
+    { framework: "PCI DSS 4.0", id: "6.3.1", title: "Identificar y clasificar vulnerabilidades" },
+    { framework: "NIST 800-53", id: "SI-2", title: "Flaw Remediation" },
+    { framework: "ISO 27001:2022", id: "A.8.8", title: "Gesti\xF3n de vulnerabilidades t\xE9cnicas" },
+    { framework: "CIS v8", id: "7.1", title: "Gesti\xF3n continua de vulnerabilidades" }
+  ],
+  config: [
+    { framework: "OWASP 2021", id: "A05", title: "Configuraci\xF3n de seguridad incorrecta" },
+    { framework: "PCI DSS 4.0", id: "2.2.1", title: "Est\xE1ndares de configuraci\xF3n segura" },
+    { framework: "NIST 800-53", id: "CM-6", title: "Configuration Settings" },
+    { framework: "ISO 27001:2022", id: "A.8.9", title: "Gesti\xF3n de la configuraci\xF3n" },
+    { framework: "CIS v8", id: "4.1", title: "Proceso de configuraci\xF3n segura" }
+  ],
+  logging: [
+    { framework: "OWASP 2021", id: "A09", title: "Fallos de registro y monitoreo de seguridad" },
+    { framework: "PCI DSS 4.0", id: "10.2.1", title: "Registros de auditor\xEDa" },
+    { framework: "NIST 800-53", id: "AU-2", title: "Event Logging" },
+    { framework: "ISO 27001:2022", id: "A.8.15", title: "Registro de eventos" },
+    { framework: "CIS v8", id: "8.2", title: "Recolecci\xF3n de registros de auditor\xEDa" }
+  ],
+  appsec: [
+    { framework: "OWASP 2021", id: "A04", title: "Dise\xF1o inseguro" },
+    { framework: "PCI DSS 4.0", id: "6.2.1", title: "Software desarrollado de forma segura" },
+    { framework: "NIST 800-53", id: "SA-11", title: "Developer Testing and Evaluation" },
+    { framework: "ISO 27001:2022", id: "A.8.25", title: "Ciclo de vida de desarrollo seguro" },
+    { framework: "CIS v8", id: "16.1", title: "Proceso de desarrollo seguro" }
+  ]
+};
+function themesOf(f) {
+  const cw = new Set((f.cwe ?? []).map((c) => c.replace(/^CWE-/i, "")));
+  const r = f.ruleId.toUpperCase();
+  const out = /* @__PURE__ */ new Set();
+  const anyCwe = (...ids) => ids.some((c) => cw.has(c));
+  if (anyCwe("89", "78", "77", "74", "90", "91", "94", "95", "79", "22", "23", "98", "611", "918", "502", "643")) out.add("injection");
+  if (f.category === "secret" || anyCwe("798", "259", "321", "522", "256")) out.add("secrets");
+  if (anyCwe("327", "326", "310", "295", "319", "757") || r.startsWith("XOL-TLS-") || r === "XOL-SSH-006" || r === "XOL-NET-003") out.add("crypto");
+  if (anyCwe("287", "306", "862", "285", "863", "639", "640", "384") || r.startsWith("XOL-SSH-") || r.startsWith("XOL-ACC-")) out.add("authn");
+  if (r === "XOL-ACC-001" || r === "XOL-ACC-003" || r === "XOL-ACC-004" || r === "XOL-FS-003") out.add("privilege");
+  if (f.category === "sca" || f.category === "container" || f.category === "host" && f.package || r.startsWith("XOL-PAT-")) out.add("vulnmgmt");
+  if (f.category === "iac" || r.startsWith("XOL-MAC-") || r.startsWith("XOL-KRN-") || r.startsWith("XOL-NET-") || r.startsWith("XOL-SVC-") || r.startsWith("XOL-FS-")) out.add("config");
+  if (r.startsWith("XOL-LOG-")) out.add("logging");
+  if (!out.size) {
+    if (f.category === "sast" || f.category === "dast") out.add("appsec");
+    else if (f.category === "config" || f.category === "network") out.add("config");
+  }
+  return [...out];
+}
+function controlsFor(f) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const theme of themesOf(f)) {
+    for (const c of THEME_CONTROLS[theme]) {
+      const key = `${c.framework}|${c.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(c);
+    }
+  }
+  return out.sort((a, b) => frameworkRank(a.framework) - frameworkRank(b.framework) || a.id.localeCompare(b.id, void 0, { numeric: true }));
+}
+
 // src/report.ts
 var riskEnriched = (f) => !!f.risk && (f.risk.kev || f.risk.epss !== void 0 || !!f.risk.assetCriticality);
 function topByRisk(findings, n = 10) {
@@ -38076,6 +38179,8 @@ function details(f) {
   if (riskEnriched(f)) rows.push(`- **Prioridad de riesgo:** ${f.risk.score}/100 \u2014 ${f.risk.factors.join("; ")}`);
   const tech = attackFor(f);
   if (tech.length) rows.push(`- **MITRE ATT&CK:** ${tech.map((t) => `${t.id} ${t.name} (${t.tactic})`).join("; ")}`);
+  const ctrls = controlsFor(f);
+  if (ctrls.length) rows.push(`- **Cumplimiento:** ${ctrls.map((c) => `${c.id} (${c.framework})`).join("; ")}`);
   if (f.triage) rows.push(`- **Estado:** ${STATUS_ES[f.triage.status]}${f.triage.note ? ` \u2014 ${f.triage.note}` : ""}`);
   return rows;
 }
@@ -38097,6 +38202,46 @@ function attackCoverage(active) {
   const groups = [...byTactic.values()].sort((a, b) => tacticRank(a.tactic) - tacticRank(b.tactic));
   for (const g of groups) g.techniques.sort((a, b) => a.tech.id.localeCompare(b.tech.id));
   return groups;
+}
+function complianceCoverage(active) {
+  const byCtrl = /* @__PURE__ */ new Map();
+  for (const f of active) {
+    for (const c of controlsFor(f)) {
+      const key = `${c.framework}|${c.id}`;
+      const e = byCtrl.get(key) ?? { control: c, ids: [] };
+      if (!e.ids.includes(f.id)) e.ids.push(f.id);
+      byCtrl.set(key, e);
+    }
+  }
+  const byFw = /* @__PURE__ */ new Map();
+  for (const e of byCtrl.values()) {
+    const g = byFw.get(e.control.framework) ?? { framework: e.control.framework, controls: [] };
+    g.controls.push(e);
+    byFw.set(e.control.framework, g);
+  }
+  const groups = [...byFw.values()].sort((a, b) => frameworkRank(a.framework) - frameworkRank(b.framework));
+  for (const g of groups) g.controls.sort((a, b) => a.control.id.localeCompare(b.control.id, void 0, { numeric: true }));
+  return groups;
+}
+function complianceLinesMd(active) {
+  const groups = complianceCoverage(active);
+  if (!groups.length) return [];
+  const out = ["## Brechas de cumplimiento", "", "Controles con hallazgos abiertos, por marco. Mapeo orientativo para dirigir la remediaci\xF3n; no sustituye una auditor\xEDa formal.", ""];
+  for (const g of groups) {
+    out.push(`**${g.framework}**`);
+    for (const c of g.controls) out.push(`- \`${c.control.id}\` ${c.control.title} \u2014 ${c.ids.length} hallazgo(s): ${c.ids.slice(0, 12).join(", ")}${c.ids.length > 12 ? "\u2026" : ""}`);
+    out.push("");
+  }
+  return out;
+}
+function complianceHtml(active) {
+  const groups = complianceCoverage(active);
+  if (!groups.length) return "";
+  const rows = groups.map((g) => {
+    const ctrls = g.controls.map((c) => `<li><code>${esc2(c.control.id)}</code> ${esc2(c.control.title)} \u2014 <b>${c.ids.length}</b> (${c.ids.slice(0, 12).map((i) => `<code>${i}</code>`).join(" ")}${c.ids.length > 12 ? "\u2026" : ""})</li>`).join("");
+    return `<tr><td><b>${esc2(g.framework)}</b></td><td><ul class="att">${ctrls}</ul></td></tr>`;
+  }).join("");
+  return `<h2>Brechas de cumplimiento</h2><p class="meta">Controles con hallazgos abiertos, por marco. Mapeo orientativo; no sustituye una auditor\xEDa formal.</p><table><tr><th>Marco</th><th>Controles</th></tr>${rows}</table>`;
 }
 function attackLinesMd(active) {
   const groups = attackCoverage(active);
@@ -38143,6 +38288,7 @@ function toMarkdown(meta3, findings, includeSuppressed, prev) {
     out.push("");
   }
   out.push(...attackLinesMd(active));
+  out.push(...complianceLinesMd(active));
   for (const sev of SEVERITIES) {
     const group = active.filter((f) => f.severity === sev);
     if (!group.length) continue;
@@ -38217,6 +38363,7 @@ ${execHtml(buildExecSummary(meta3, findings, prev))}
 <h2>Herramientas</h2><table><tr><th>Herramienta</th><th>Versi\xF3n</th><th>Estado</th><th>Hallazgos</th><th>Nota</th></tr>${tools}</table>
 ${priorityRows ? `<h2>Prioridad por riesgo</h2><p class="meta">Orden por explotabilidad real (EPSS/CISA KEV), no solo por severidad.</p><table><tr><th>#</th><th>Riesgo</th><th>Severidad</th><th>Hallazgo</th><th>D\xF3nde</th></tr>${priorityRows}</table>` : ""}
 ${attackHtml(active)}
+${complianceHtml(active)}
 <h2>Hallazgos</h2>${cards || "<p>Sin hallazgos activos.</p>"}
 ${suppressedRows ? `<h2>Descartados en el triage</h2><table><tr><th>ID</th><th>Severidad</th><th>Hallazgo</th><th>Estado</th><th>Nota</th></tr>${suppressedRows}</table>` : ""}
 </main></body></html>`;
@@ -38234,7 +38381,13 @@ function toSarif(meta3, findings) {
       helpUri: f.references?.[0],
       properties: {
         "security-severity": f.cvss ? String(f.cvss.score) : SARIF_SCORE[f.severity],
-        tags: ["security", f.category, ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`), ...attackFor(f).map((t) => `external/attack/${t.id}`)]
+        tags: [
+          "security",
+          f.category,
+          ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`),
+          ...attackFor(f).map((t) => `external/attack/${t.id}`),
+          ...controlsFor(f).filter((c) => c.framework === "OWASP 2021").map((c) => `external/owasp/${c.id.toLowerCase()}`)
+        ]
       }
     });
   }

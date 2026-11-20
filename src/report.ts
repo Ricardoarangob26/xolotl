@@ -1,6 +1,7 @@
 import { CATEGORIES, Finding, SEVERITIES, sevRank, where } from "./findings.js";
 import { isSuppressed, RunMeta } from "./store.js";
 import { attackFor, tacticRank, Technique } from "./attack.js";
+import { controlsFor, frameworkRank, Control } from "./compliance.js";
 
 /** ¿La prioridad aporta algo más allá de la severidad? (feeds o criticidad del activo) */
 const riskEnriched = (f: Finding): boolean => !!f.risk && (f.risk.kev || f.risk.epss !== undefined || !!f.risk.assetCriticality);
@@ -185,6 +186,8 @@ function details(f: Finding): string[] {
   if (riskEnriched(f)) rows.push(`- **Prioridad de riesgo:** ${f.risk!.score}/100 — ${f.risk!.factors.join("; ")}`);
   const tech = attackFor(f);
   if (tech.length) rows.push(`- **MITRE ATT&CK:** ${tech.map((t) => `${t.id} ${t.name} (${t.tactic})`).join("; ")}`);
+  const ctrls = controlsFor(f);
+  if (ctrls.length) rows.push(`- **Cumplimiento:** ${ctrls.map((c) => `${c.id} (${c.framework})`).join("; ")}`);
   if (f.triage) rows.push(`- **Estado:** ${STATUS_ES[f.triage.status]}${f.triage.note ? ` — ${f.triage.note}` : ""}`);
   return rows;
 }
@@ -214,6 +217,60 @@ function attackCoverage(active: Finding[]): TacticGroup[] {
   const groups = [...byTactic.values()].sort((a, b) => tacticRank(a.tactic) - tacticRank(b.tactic));
   for (const g of groups) g.techniques.sort((a, b) => a.tech.id.localeCompare(b.tech.id));
   return groups;
+}
+
+// ───────────────────────────── Brechas de cumplimiento ─────────────────────────────
+
+interface FwGroup {
+  framework: string;
+  controls: Array<{ control: Control; ids: string[] }>;
+}
+
+function complianceCoverage(active: Finding[]): FwGroup[] {
+  const byCtrl = new Map<string, { control: Control; ids: string[] }>();
+  for (const f of active) {
+    for (const c of controlsFor(f)) {
+      const key = `${c.framework}|${c.id}`;
+      const e = byCtrl.get(key) ?? { control: c, ids: [] };
+      if (!e.ids.includes(f.id)) e.ids.push(f.id);
+      byCtrl.set(key, e);
+    }
+  }
+  const byFw = new Map<string, FwGroup>();
+  for (const e of byCtrl.values()) {
+    const g = byFw.get(e.control.framework) ?? { framework: e.control.framework, controls: [] };
+    g.controls.push(e);
+    byFw.set(e.control.framework, g);
+  }
+  const groups = [...byFw.values()].sort((a, b) => frameworkRank(a.framework) - frameworkRank(b.framework));
+  for (const g of groups) g.controls.sort((a, b) => a.control.id.localeCompare(b.control.id, undefined, { numeric: true }));
+  return groups;
+}
+
+function complianceLinesMd(active: Finding[]): string[] {
+  const groups = complianceCoverage(active);
+  if (!groups.length) return [];
+  const out = ["## Brechas de cumplimiento", "", "Controles con hallazgos abiertos, por marco. Mapeo orientativo para dirigir la remediación; no sustituye una auditoría formal.", ""];
+  for (const g of groups) {
+    out.push(`**${g.framework}**`);
+    for (const c of g.controls) out.push(`- \`${c.control.id}\` ${c.control.title} — ${c.ids.length} hallazgo(s): ${c.ids.slice(0, 12).join(", ")}${c.ids.length > 12 ? "…" : ""}`);
+    out.push("");
+  }
+  return out;
+}
+
+function complianceHtml(active: Finding[]): string {
+  const groups = complianceCoverage(active);
+  if (!groups.length) return "";
+  const rows = groups
+    .map((g) => {
+      const ctrls = g.controls
+        .map((c) => `<li><code>${esc(c.control.id)}</code> ${esc(c.control.title)} — <b>${c.ids.length}</b> (${c.ids.slice(0, 12).map((i) => `<code>${i}</code>`).join(" ")}${c.ids.length > 12 ? "…" : ""})</li>`)
+        .join("");
+      return `<tr><td><b>${esc(g.framework)}</b></td><td><ul class="att">${ctrls}</ul></td></tr>`;
+    })
+    .join("");
+  return `<h2>Brechas de cumplimiento</h2><p class="meta">Controles con hallazgos abiertos, por marco. Mapeo orientativo; no sustituye una auditoría formal.</p><table><tr><th>Marco</th><th>Controles</th></tr>${rows}</table>`;
 }
 
 function attackLinesMd(active: Finding[]): string[] {
@@ -269,6 +326,7 @@ export function toMarkdown(meta: RunMeta, findings: Finding[], includeSuppressed
   }
 
   out.push(...attackLinesMd(active));
+  out.push(...complianceLinesMd(active));
 
   for (const sev of SEVERITIES) {
     const group = active.filter((f) => f.severity === sev);
@@ -364,6 +422,7 @@ ${execHtml(buildExecSummary(meta, findings, prev))}
 <h2>Herramientas</h2><table><tr><th>Herramienta</th><th>Versión</th><th>Estado</th><th>Hallazgos</th><th>Nota</th></tr>${tools}</table>
 ${priorityRows ? `<h2>Prioridad por riesgo</h2><p class="meta">Orden por explotabilidad real (EPSS/CISA KEV), no solo por severidad.</p><table><tr><th>#</th><th>Riesgo</th><th>Severidad</th><th>Hallazgo</th><th>Dónde</th></tr>${priorityRows}</table>` : ""}
 ${attackHtml(active)}
+${complianceHtml(active)}
 <h2>Hallazgos</h2>${cards || "<p>Sin hallazgos activos.</p>"}
 ${suppressedRows ? `<h2>Descartados en el triage</h2><table><tr><th>ID</th><th>Severidad</th><th>Hallazgo</th><th>Estado</th><th>Nota</th></tr>${suppressedRows}</table>` : ""}
 </main></body></html>`;
@@ -384,7 +443,13 @@ export function toSarif(meta: RunMeta, findings: Finding[]): object {
       helpUri: f.references?.[0],
       properties: {
         "security-severity": f.cvss ? String(f.cvss.score) : SARIF_SCORE[f.severity],
-        tags: ["security", f.category, ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`), ...attackFor(f).map((t) => `external/attack/${t.id}`)],
+        tags: [
+          "security",
+          f.category,
+          ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`),
+          ...attackFor(f).map((t) => `external/attack/${t.id}`),
+          ...controlsFor(f).filter((c) => c.framework === "OWASP 2021").map((c) => `external/owasp/${c.id.toLowerCase()}`),
+        ],
       },
     });
   }

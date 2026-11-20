@@ -69,7 +69,7 @@ Lo más barato y lo que más valor agrega: todo lo que ya se escanea gana contex
 | **Siguiente paso sugerido** | ✅ | `inventory view=next`: por activo infiere su tipo, muestra la matriz de cobertura y propone los huecos, ordenado por criticidad. |
 | **Plan de evaluación por activo** | ✅ | `eval_plan` + skill `appsec-plan`: encadena los huecos en fases (superficie → código → configuración → aplicación) con Tier y acceso; `access=[...]` separa lo ejecutable ahora. |
 | **Revalidación no destructiva** | ✅ | `revalidate`: recomprueba un hallazgo local y determinista, **veredicto de 3 estados** (CONFIRMADO/RESUELTO/NO CONCLUYENTE). "No pude comprobarlo" nunca es "ya no existe". Principio «el motor decide, no el modelo». |
-| **Mapeo a marcos** | 🔵 pend. | De CWE/regla a PCI DSS 4.0, NIST 800-53/CSF 2.0, ISO 27001:2022, CIS Controls v8 y OWASP Top 10/ASVS. Informe de brechas por control. |
+| **Mapeo a marcos** | ✅ | Hallazgo → control en 5 marcos (`src/compliance.ts`), determinista y local: clasifica por tema (regla/CWE/categoría) y traduce a **OWASP 2021, PCI DSS 4.0, NIST 800-53, ISO 27001:2022 y CIS v8**. En el informe: línea por hallazgo + **«Brechas de cumplimiento»** (controles con hallazgos abiertos, por marco); etiquetas `external/owasp/*` en el SARIF. Mapeo orientativo, no una auditoría formal. |
 | **Mapeo a MITRE ATT&CK** | ✅ | Técnica(s) ATT&CK por hallazgo (`src/attack.ts`), deterministas y locales: de la regla (XOL-* de host/red), del CWE o de la categoría. En el informe (línea por hallazgo + **mapa de cobertura por táctica**, de acceso inicial a recolección), y como etiquetas `external/attack/Txxxx` en el SARIF. Lenguaje común para detección (azul) y para planear la validación (roja/púrpura). |
 | **Plan de compromiso** | 🔴 pend. | Skill `appsec-engagement`: reglas de enfrentamiento, alcance, ventanas y referencia de autorización sobre `dast_scope`, con plantilla exportable. Materializa el candado de la vía roja. |
 | **Frontera de salida no confiable** | 🧩 pend. | Marcar la salida de las herramientas con un nonce para que el LLM la trate como **datos, no instrucciones**: endurecimiento anti-inyección de prompt. *(Idea rescatada de ARTEX.)* |
@@ -191,7 +191,7 @@ referencia histórica.
 | Puntuación de riesgo (`risk-scorer`) | ✅ EPSS + CISA KEV + CVSS (`risk_feeds`) | 🧩 |
 | Validación (`poc-validator`) | ✅ `revalidate` (3 estados) + Nuclei por plantilla | 🟣 |
 | Orquestación (`swarm-orchestrator`) | ✅ `eval_plan` + skill `appsec-plan` | 🧩 |
-| Cumplimiento (`compliance-mapper`, `stig-analyst`) | 🟡 CWE por hallazgo | 🔵 Mapeo a marcos (1.5); STIG/CIS (Fase 2) |
+| Cumplimiento (`compliance-mapper`, `stig-analyst`) | ✅ mapeo a 5 marcos (OWASP/PCI/NIST/ISO/CIS) | 🔵 STIG/CIS formales (Fase 2) |
 | Planeación (`engagement-planner`, `attack-planner`) | 🟡 `dast_scope` + ✅ mapeo ATT&CK | 🔴 Plan de compromiso (1.5) |
 | Nube y contenedores (`cloud-security`, `container-breakout`) | 🟡 imágenes e IaC | 🔵 Prowler + Kubernetes (Fase 2) |
 | Directorio Activo (`ad-attacker`, `password-auditor`) | ❌ | 🔵 postura (Fase 2) · 🔴 validación (Fase 5) |
