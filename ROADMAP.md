@@ -1,109 +1,103 @@
 # Hoja de ruta de Xolotl
 
 > Estado vivo del proyecto. Lo **Hecho** ya está en `main`; lo demás está ordenado por
-> cercanía. La estructura del catálogo vive en [`docs/catalogo/`](docs/catalogo/README.md).
+> cercanía dentro de cada vía. La estructura del catálogo vive en [`docs/catalogo/`](docs/catalogo/README.md).
 
-## Principio rector
+## Principios rectores
 
-Todo lo que Xolotl haga debe **depender de ti y correr en local**: binarios oficiales
-verificados por SHA-256 en una carpeta propia (`~/.xolotl`), base de datos local, y el
-cerebro de IA apuntable a un modelo local (`ANTHROPIC_BASE_URL`) si no se quiere la nube.
-Ninguna capacidad nueva introduce un servicio externo obligatorio.
+**1. Local y tuyo.** Todo lo que Xolotl haga debe **depender de ti y correr en local**: binarios
+oficiales verificados por SHA-256 en una carpeta propia (`~/.xolotl`), base de datos local, y el
+cerebro de IA apuntable a un modelo local (`ANTHROPIC_BASE_URL`) si no se quiere la nube. Ninguna
+capacidad nueva introduce un servicio externo obligatorio ni telemetría.
+
+**2. Dos vías, un núcleo.** El proyecto se organiza en dos vías sobre el mismo motor, para cubrir
+blue, red y purple team completos:
+
+- 🔵 **Vía Azul (defensa)** — evaluar, priorizar, documentar, endurecer y detectar. Es el grueso
+  de lo construido y de lo que falta. No necesita permiso ofensivo.
+- 🔴 **Vía Roja (validación ofensiva)** — probar que el endurecimiento aguanta, **solo sobre
+  infraestructura propia**, autorizada y acotada. Es el cierre del ciclo, no el comienzo.
+- 🟣 **Púrpura (el bucle)** — une las dos: hallazgo azul → validación roja → ingeniería de
+  detección → re-endurecer.
+- 🧩 **Núcleo compartido** — inventario, riesgo, alcance, Tier 1/2, confirmadores, informes y
+  traspaso. Lo usan las dos vías.
+
+**3. El motor decide, el modelo asesora.** La capa de IA planifica y redacta, pero **nunca**
+decide un veredicto, el alcance ni ejecuta por su cuenta. Los motores deterministas confirman;
+el usuario aprueba.
+
+### El candado de la vía roja (regla dura, sin excepción)
+
+Para que lo ofensivo esté **disponible sin riesgo**, toda capacidad de la Vía Roja exige:
+
+1. **Solo activos propios** dentro del alcance registrado en `dast_scope`, con **referencia de
+   autorización**; el objetivo se valida contra el alcance antes de cada acción.
+2. **Vía explícita**: la capacidad ofensiva no se activa por accidente — requiere marcarla a
+   propósito (`XOLOTL_TRACK=red` o `track:"red"` por tool).
+3. **Tier 1 (advisory) por defecto**: el servidor entrega el comando exacto y tú lo corres; Tier 2
+   (ejecución) pide aprobación por comando y **registra quién aprobó** (humano/regla/modelo).
+4. **Nada destructivo**, nada en producción fuera de ventana acordada, credenciales y artefactos
+   de prueba sintéticos, nunca datos reales de clientes.
+5. **Nada contra terceros** (ver *No objetivos*).
 
 ---
 
-## Hecho
+## 🧩 Núcleo — Hecho
 
 - **SAST · SCA · Secretos · IaC · Contenedores** sobre código fuente (`scan_static`, `scan_codeql`, `scan_container_image`, `scan_iac`).
 - **Servidores Linux** por SSH con llave o recolector de solo lectura (`scan_host`, `host_collector`).
 - **Red sin credenciales**: descubrimiento TCP + inspección TLS nativa + ssh-audit (`scan_network`).
 - **DAST** por plantillas con alcance autorizado (`scan_dast`, `dast_scope`).
-- **Triage con memoria**, comparación de corridas e informes (SARIF/HTML/MD/JSON).
+- **BD local SQLite** con huella estable; **inventario** que crece solo (`inventory`); **Tier 1/Tier 2**.
+- **Triage con memoria**, comparación de corridas (`runs_diff`) e informes (SARIF/HTML/MD/JSON).
+- **Puntuación de riesgo** (CVSS × EPSS/KEV × criticidad), **resumen ejecutivo**, **traspaso** (`handoff`).
+- **Siguiente paso sugerido** (`inventory view=next`), **plan de evaluación** (`eval_plan`), **revalidación no destructiva** (`revalidate`).
+
+El catálogo de skills por dominio y nivel de acceso vive en [`docs/catalogo/`](docs/catalogo/README.md).
 
 ---
 
-## Fase 1 — Memoria y catálogo ✅ (completada)
+## 🧩 Inteligencia transversal (Fase 1.5) — sirve a las dos vías
 
-Lo que destiló la revisión de [`pentest-ai-agents`](https://github.com/0xSteph/pentest-ai-agents):
-tomar su estética y su modelo, no su dependencia de la nube.
+Lo más barato y lo que más valor agrega: todo lo que ya se escanea gana contexto. No toca sistemas.
 
-| Tarea | Estado | Qué agrega | Inspiración |
-|---|---|---|---|
-| **BD local SQLite** | ✅ | Hallazgos, corridas y enlaces en `~/.xolotl/xolotl.db` con huella estable, columna `tool_used` e índices. Motor `node:sqlite` nativo (Node 22.5+) con respaldo JSON. | Su `findings.sh` + esquema |
-| **Inventario / ecosistema** | ✅ | Tool `inventory`: resumen del ecosistema, activos, hallazgos en el tiempo (nuevos/persistentes/desaparecidos) e historia por huella. Crece solo con cada corrida. | Tu petición original |
-| **Niveles de ejecución (Tier 1 / Tier 2)** | ✅ | Parámetro `mode` en `scan_network`/`scan_dast`/`scan_host` y variable `XOLOTL_MODE`. *advisory* (Tier 1): no se conecta, entrega el comando exacto para correr a mano (tu flujo de MobaXterm). *execute* (Tier 2): escanea validando el alcance. | Su modelo de dos niveles |
-| **Catálogo de skills por dominio** | ✅ | Siete skills por dominio con nivel de acceso y de ejecución, navegables en [`docs/catalogo/`](docs/catalogo/README.md). Nuevas: `appsec-network` (red sin credenciales) y `appsec-inventory` (ecosistema). | Su catálogo de agentes `.md` |
-
-## Cobertura frente a `pentest-ai-agents` v3.4.0 (revisión 2026-11-18)
-
-Segunda pasada, ahora contra los 52 agentes, 3 comandos y la BD de la v3.4.0. Ellos son
-*prompts* que asesoran; Xolotl son **motores que ejecutan y recuerdan**. Por eso la meta no es
-copiar agentes, sino que cada dominio defensivo o de evaluación tenga motor, skill o ambos.
-
-| Dominio (sus agentes) | Xolotl hoy | Acción |
+| Tarea | Estado | Qué agrega |
 |---|---|---|
-| Código (`code-auditor`) | ✅ `scan_static`, `scan_codeql` | — |
-| Vulnerabilidades (`vuln-scanner`) | ✅ `scan_network`, `scan_dast`, `scan_host` | — |
-| Verificación de arreglos (`fix-verifier`) | ✅ `runs_diff` + `appsec-fix` | — |
-| Informes (`report-generator`) | ✅ `report_generate` (técnico + resumen ejecutivo) | — |
-| Memoria (`/memory`, `findings.sh`, `doctor.sh`) | ✅ BD SQLite, `inventory`, `xolotl_doctor` | Traspaso de compromiso → Fase 1.5 |
-| Recomendación (`/recommend`, `/agents-for`) | ✅ `inventory view=next` propone qué evaluar por activo | — |
-| Puntuación de riesgo (`risk-scorer`) | ✅ EPSS + CISA KEV sobre la severidad (`risk_feeds`) | — |
-| Cumplimiento (`compliance-mapper`, `stig-analyst`) | 🟡 CWE por hallazgo | Mapeo a marcos → Fase 1.5; STIG/CIS → Fase 2 |
-| Validación (`poc-validator`) | ✅ `revalidate` (veredicto de 3 estados, no destructivo) + Nuclei por plantilla | — |
-| Planeación (`engagement-planner`, `attack-planner`) | 🟡 `dast_scope` (alcance) | Reglas de enfrentamiento + ATT&CK → Fase 1.5 |
-| Nube y contenedores (`cloud-security`, `container-breakout`) | 🟡 imágenes e IaC | Prowler (Fase 2) + postura de Kubernetes → Fase 2 |
-| Directorio Activo (`ad-attacker`, `password-auditor`) | ❌ | Postura de AD de solo lectura → Fase 2 |
-| Escalada de privilegios (`privesc-advisor`) | 🟡 SUID/sudoers/kernel en `scan_host` | Windows en Fase 2 |
-| Cadena de suministro y CI/CD (`supply-chain-auditor`, `cicd-redteam`) | 🟡 SCA | **Fase 2.5** |
-| Criptografía (`crypto-analyzer`) | 🟡 TLS en red | Mal uso en código → Fase 2.5 |
-| Recon y web/API (`recon-advisor`, `web-hunter`, `api-security`, `bug-bounty`) | 🟡 Nuclei | Fase 3 (ya prevista) |
-| Lógica de negocio (`bizlogic-hunter`) | ❌ | Lista de pruebas guiada (solo advisory) → Fase 3 |
-| IA/LLM (`llm-redteam`, `ai-recon`) | ❌ | Evaluación de apps LLM propias → Fase 3 |
-| Base de datos (`database-attacker`) | 🟡 DAST genérico | Auditoría de configuración de BD → Fase 2 |
-| Tráfico, IR, malware, reversa (`traffic-analyzer`, `forensics-analyst`, `malware-analyst`, `reverse-engineer`) | ❌ | **Fase 4** (análisis offline de artefactos) |
-| Móvil, firmware, OT (`mobile-pentester`, `iot-pentester`, `scada-attacker`) | ❌ | Análisis estático/pasivo → Fase 4 |
-| Detección y amenazas (`detection-engineer`, `threat-modeler`) | ❌ | **Fase 4** |
-| Orquestación (`swarm-orchestrator`) | ✅ `eval_plan` + skill `appsec-plan` encadenan las tools por fases | — |
-| Costo de tokens (`-Lite` → Haiku) | 🟡 modelo local posible | Sugerencia de modelo por skill → Fase 1.5 |
-| Validación ofensiva (`credential-tester`, `password-auditor`, `network-attacker`, `lateral-movement`, `privesc-advisor`, `exploit-chainer`, `ad-attacker`, `payload-crafter`) | ❌ | **Fase 5**, sobre sistemas propios ya documentados |
-| Validación de defensas (`evasion-specialist`, `detection-engineer` como blue/purple team) | ❌ | **Fase 5** (purple team) |
-| `ctf-solver`, `wireless-pentester` | — | Fuera de foco (ver *No objetivos*) |
+| **Puntuación de riesgo** | ✅ | Base **CVSS** real (NVD/proveedor/GHSA vía OSV, Trivy y Nuclei) × **explotabilidad** (**EPSS** + **CISA KEV**, feeds locales vía `risk_feeds`, funciona sin red) × **criticidad del activo** (`asset_criticality`). Visible en `findings_query`, en el informe, en «Prioridad por riesgo» y en el inventario; el SARIF usa el CVSS real como `security-severity`. |
+| **Resumen ejecutivo** | ✅ | Sección de negocio en el informe (MD/HTML): postura, explotabilidad real (KEV, EPSS ≥ 10%), activos de criticidad de negocio, tendencia vs. la corrida anterior, avance de remediación y "lo más urgente", con tira de KPIs. |
+| **Traspaso de compromiso** | ✅ | `handoff` (export/import): alcance, triage, criticidad, inventario y artefactos de corrida, para retomar en otra sesión o máquina. |
+| **Siguiente paso sugerido** | ✅ | `inventory view=next`: por activo infiere su tipo, muestra la matriz de cobertura y propone los huecos, ordenado por criticidad. |
+| **Plan de evaluación por activo** | ✅ | `eval_plan` + skill `appsec-plan`: encadena los huecos en fases (superficie → código → configuración → aplicación) con Tier y acceso; `access=[...]` separa lo ejecutable ahora. |
+| **Revalidación no destructiva** | ✅ | `revalidate`: recomprueba un hallazgo local y determinista, **veredicto de 3 estados** (CONFIRMADO/RESUELTO/NO CONCLUYENTE). "No pude comprobarlo" nunca es "ya no existe". Principio «el motor decide, no el modelo». |
+| **Mapeo a marcos** | 🔵 pend. | De CWE/regla a PCI DSS 4.0, NIST 800-53/CSF 2.0, ISO 27001:2022, CIS Controls v8 y OWASP Top 10/ASVS. Informe de brechas por control. |
+| **Mapeo a MITRE ATT&CK** | 🟣 pend. | Técnica asociada por hallazgo: lenguaje común para detección (azul) y para planear la validación (roja). |
+| **Plan de compromiso** | 🔴 pend. | Skill `appsec-engagement`: reglas de enfrentamiento, alcance, ventanas y referencia de autorización sobre `dast_scope`, con plantilla exportable. Materializa el candado de la vía roja. |
+| **Frontera de salida no confiable** | 🧩 pend. | Marcar la salida de las herramientas con un nonce para que el LLM la trate como **datos, no instrucciones**: endurecimiento anti-inyección de prompt. *(Idea rescatada de ARTEX.)* |
+| **Migraciones de esquema** | 🧩 pend. | Versión del esquema en la BD y migraciones idempotentes. |
+| **Modelo por skill** | 🧩 pend. | Pista `model:` en skills que solo asesoran, para usar uno barato o local. |
 
-`✅` cubierto · `🟡` parcial · `❌` falta.
+---
 
-## Fase 1.5 — Inteligencia sobre los hallazgos (transversal)
+## 🔵 Vía Azul — defensa
 
-Es lo más barato y lo que más valor agrega: todo lo que ya se escanea gana contexto. No toca sistemas.
+Evaluar, priorizar, documentar, endurecer y detectar. Siempre de solo lectura o sobre artefactos
+que tú entregas; lo que toca un sistema vivo respeta Tier 1/Tier 2 y el alcance.
 
-| Tarea | Qué agrega | Inspiración |
-|---|---|---|
-| **Puntuación de riesgo** ✅ | Base **CVSS** real (vector y puntaje de NVD/proveedor/GHSA vía OSV, Trivy y Nuclei) × **explotabilidad** (**EPSS** + **CISA KEV**, feeds opcionales en `~/.xolotl/feeds` vía `risk_feeds`, funciona sin red) × **criticidad del activo** (la fija el usuario con `asset_criticality`: crítica/alta/normal/baja). Visible en `findings_query`, en el detalle del informe (línea CVSS + factores), en la tabla «Prioridad por riesgo» que reordena entre severidades y en el inventario por activo; el SARIF usa el CVSS real como `security-severity`. | `risk-scorer` |
-| **Mapeo a marcos** | De CWE/regla a PCI DSS 4.0, NIST 800-53/CSF 2.0, ISO 27001:2022, CIS Controls v8 y OWASP Top 10/ASVS. Informe de brechas por control en `report_generate`. | `compliance-mapper` |
-| **Mapeo a MITRE ATT&CK** | Técnica asociada por hallazgo (útil para detección y para planear). | `engagement-planner` |
-| **Plan de compromiso** | Skill `appsec-engagement`: reglas de enfrentamiento, alcance y ventanas sobre `dast_scope`, con plantilla exportable. | `engagement-planner` |
-| **Resumen ejecutivo** ✅ | Sección de negocio al inicio del informe (MD y HTML): postura general (activos y crít./altos), explotabilidad real (KEV y EPSS ≥ 10%), hallazgos sobre activos de criticidad de negocio, tendencia frente a la corrida anterior del mismo objetivo (resueltos/nuevos/persisten: mejoró/empeoró/se mantuvo), avance de remediación y "lo más urgente". El HTML añade una tira de KPIs. | `report-generator` |
-| **Traspaso de compromiso** ✅ | Tool `handoff` (export/import): un archivo JSON con alcance, triage, criticidad de activos, inventario acumulado y los artefactos de cada corrida, para retomar en otra sesión o máquina (fusión o reemplazo). No incluye los feeds (se rebajan con `risk_feeds`). | `handoff.sh` |
-| **Siguiente paso sugerido** ✅ | `inventory view=next`: por activo, infiere su tipo (host, web, código, imagen), muestra una matriz de cobertura (qué pruebas aplican y cuáles ya corrieron) y propone las que faltan con su nivel (código/app/máquina) y el acceso que necesitan. Lee señales del propio inventario —puertos abiertos del hallazgo de red, p. ej. "puerto web 8080 abierto y sin DAST"; "host sin revisión de configuración"; "SAST hecho, falta CodeQL/IaC"— y ordena por criticidad del activo. Es el mapa de "qué tanto le puedo evaluar a cada sistema". | `/recommend` |
-| **Plan de evaluación por activo** ✅ | Tool `eval_plan` + skill `appsec-plan`: encadena los huecos de `inventory view=next` en un plan ordenado por fases (superficie sin credenciales → código → configuración interna → aplicación autorizada). Cada paso trae su nivel (código/app/máquina), su Tier por defecto y el acceso que pide; `access=[...]` separa lo ejecutable ahora de lo que espera acceso, y la criticidad del activo ordena dentro de cada fase. No ejecuta: es el guion. | `swarm-orchestrator` |
-| **Revalidación no destructiva** ✅ | Tool `revalidate`: vuelve a comprobar un hallazgo concreto de forma local, determinista y sin tocar sistemas (relee los archivos ya escaneados), con **veredicto de 3 estados** — CONFIRMADO / RESUELTO / NO CONCLUYENTE. Confirmadores locales para SCA (¿el manifiesto sigue fijando la versión vulnerable?), código, secretos e IaC; red/host/DAST devuelven NO CONCLUYENTE con la tool a repetir. "No pude comprobarlo" nunca es "ya no existe". Con `apply_triage` marca lo resuelto como corregido y lo confirmado. Principio «el motor decide el veredicto, no el modelo». | `poc-validator` |
-| **Migraciones de esquema** | Versión del esquema en la BD y migraciones idempotentes. | `migrate.sh` |
-| **Modelo por skill** | Pista `model:` en skills que solo asesoran (planeación, mapeo, informe), para usar uno barato o local. | `-Lite` |
-
-## Fase 2 — Más superficie de sistema
+### Fase 2 — Más superficie de sistema
 
 | Próximo | Motor previsto | Nivel de acceso |
 |---|---|---|
 | Discos de VM sin encenderlas | `trivy vm` (VMDK, AMI, snapshots EBS) | Credenciales / archivo de disco |
-| Benchmarks CIS/STIG formales | OpenSCAP (RHEL), Lynis; salida en formato STIG con justificaciones | Usuario de lectura |
+| Benchmarks CIS/STIG formales | OpenSCAP (RHEL), Lynis; salida STIG con justificaciones | Usuario de lectura |
 | Nube: plano de control | Prowler con rol de solo lectura | Usuario de lectura |
 | Kubernetes: postura | kube-bench (CIS) + Kubescape (NSA/MITRE) | Usuario de lectura (kubeconfig RO) |
 | Windows Server | Inventario por WinRM + HardeningKitty | Credenciales |
-| Directorio Activo: postura | Consultas LDAP de solo lectura: política de contraseñas vs NIST 800-63B, cuentas privilegiadas, delegaciones, ACL riesgosas, cuentas inactivas (al estilo PingCastle) | Usuario de lectura del dominio |
+| Directorio Activo: postura | LDAP de solo lectura: política de contraseñas vs NIST 800-63B, cuentas privilegiadas, delegaciones, ACL riesgosas, cuentas inactivas (al estilo PingCastle) | Usuario de lectura del dominio |
 | Bases de datos: configuración | Auditoría de configuración y privilegios (PostgreSQL, MySQL, SQL Server) con cuenta RO | Usuario de lectura |
 | Monitoreo continuo | API de Wazuh (vulnerabilidades + CIS) | Usuario de lectura |
+| **Hardening de Linux (del diplomado)** | Guías de endurecimiento accionables sobre los hallazgos de `scan_host`: SSH, kernel, SELinux/AppArmor, auditd, firewall, montajes | Usuario de lectura / credenciales |
 
-## Fase 2.5 — Cadena de suministro y CI/CD
+### Fase 2.5 — Cadena de suministro y CI/CD
 
 | Próximo | Motor previsto | Nivel de acceso |
 |---|---|---|
@@ -112,10 +106,12 @@ Es lo más barato y lo que más valor agrega: todo lo que ya se escanea gana con
 | Pipelines de GitHub Actions | zizmor (inyección de scripts, permisos, `pull_request_target`) | Código fuente |
 | Pipelines en general | poutine (GitHub/GitLab/Azure DevOps) | Código fuente |
 | Mal uso de criptografía | Reglas Semgrep: algoritmos/modos débiles, IV fijos, RNG inseguro, hashing de contraseñas, JWT `none` | Código fuente |
+| **Higiene de releases propios** | SHA256SUMS + SBOM CycloneDX + atestación de procedencia (`gh attestation verify`) para los binarios de Xolotl | Código fuente |
 
-## Fase 3 — Profundidad de evaluación autorizada
+### Fase 3 — Profundidad de evaluación autorizada
 
-Siempre dentro del alcance registrado y con aprobación por comando.
+Siempre dentro del alcance registrado y con aprobación por comando. Es evaluación (encontrar para
+arreglar), no validación ofensiva de TTPs.
 
 - DAST más profundo: OWASP ZAP (rastreo autenticado, escaneo activo desde OpenAPI).
 - Fuzzing de APIs: Schemathesis / RESTler desde el esquema (REST, GraphQL); revisión de JWT/OAuth.
@@ -123,49 +119,98 @@ Siempre dentro del alcance registrado y con aprobación por comando.
 - Apps con LLM propias: garak / promptfoo contra endpoints en alcance (inyección de prompt, fuga de datos, abuso de herramientas), más descubrimiento de endpoints de IA.
 - Lógica de negocio: skill advisory con lista de pruebas por flujo (IDOR, saltos de paso, condiciones de carrera); sin ejecución automática.
 
-## Fase 4 — Análisis offline de artefactos y defensa
+### Fase 4 — Análisis offline de artefactos
 
-Todo corre sobre archivos que el usuario entrega; no toca sistemas.
+Todo corre sobre archivos que el usuario entrega; no toca sistemas. (La *ingeniería de detección*
+de esta fase es la mitad azul del bucle púrpura, ver abajo.)
 
 | Próximo | Motor previsto | Entrada |
 |---|---|---|
-| Tráfico capturado | tshark / Zeek: protocolos, anomalías, credenciales en claro (para reportarlas) | `.pcap` |
+| Tráfico capturado | tshark / Zeek: protocolos, anomalías, credenciales en claro | `.pcap` |
 | Respuesta a incidentes en Windows | Hayabusa / Chainsaw con reglas Sigma: línea de tiempo | `.evtx` |
 | Triage de archivos sospechosos | YARA + capa (capacidades) + hashes | Binario |
 | Apps móviles | Análisis estático de APK/IPA (jadx + Semgrep, o MobSF estático) | `.apk` / `.ipa` |
 | Firmware | unblob/binwalk para extraer + `trivy`/Syft sobre el filesystem | Imagen de firmware |
 | OT/ICS (pasivo) | Parsers ICS de Zeek (Modbus, DNP3, S7) sobre capturas | `.pcap` |
-| Ingeniería de detección | Regla Sigma sugerida por hallazgo/técnica ATT&CK | Hallazgos |
 | Modelado de amenazas | STRIDE a partir de `inventory` + IaC: flujos y fronteras de confianza, en diagrama | Inventario |
 
-## Fase 5 — Validación ofensiva de sistemas propios
+---
 
-Es el cierre del ciclo, **no el comienzo**. Solo se corre cuando el activo ya pasó por
-escaneo de vulnerabilidades (Fases 1–2), está documentado en el `inventory` y sus arreglos de
-endurecimiento están aplicados. Así cada prueba confirma que el hardening resiste, en vez de
-encontrar lo obvio. Pensada para **nuestra propia infraestructura** (purple team interno):
-validar y endurecer, con un bucle escanear → documentar → arreglar → validar → re-endurecer.
+## 🔴 Vía Roja — validación ofensiva de sistemas propios (Fase 5)
 
-Reglas duras de esta fase, sin excepción:
-- **Solo activos propios** dentro del alcance registrado en `dast_scope`; el objetivo se valida
-  contra el alcance antes de cada acción.
-- **Tier 1 (advisory) por defecto**: el servidor entrega el comando exacto y tú lo corres; Tier 2
-  (ejecución) pide aprobación por comando y queda registrado en la corrida.
-- Sin tocar producción en horario productivo salvo ventana acordada; nada destructivo.
-- Credenciales y artefactos de prueba sintéticos, nunca datos reales de clientes.
+Es el **cierre del ciclo, no el comienzo**. Solo se corre cuando el activo ya pasó por escaneo de
+vulnerabilidades (Vía Azul), está documentado en el `inventory` y sus arreglos de endurecimiento
+están aplicados. Así cada prueba confirma que el hardening resiste, en vez de encontrar lo obvio.
 
-| Capacidad | Qué valida del hardening | Motor previsto | Inspiración |
+**Aplica el candado de la vía roja** (ver *Principios rectores*): solo activos propios en alcance
+con autorización, vía explícita, Tier 1 por defecto, aprobación registrada, nada destructivo.
+
+| Capacidad | Qué valida del hardening | Motor previsto | Del diplomado |
 |---|---|---|---|
-| **Postura de contraseñas y spraying seguro** | Que la política y el bloqueo de cuentas aguanten; detecta credenciales débiles/reutilizadas sin bloquear cuentas | Pruebas con límite de intentos contra el propio directorio, cruzadas con brechas conocidas | `password-auditor`, `credential-tester` |
-| **Rutas de escalada de privilegios** | Que el endurecimiento de hosts cerró SUID, sudoers, tareas y servicios abusables | Encadenar los hallazgos de `scan_host` en una ruta demostrable (advisory) | `privesc-advisor`, `exploit-chainer` |
-| **Exposición de Directorio Activo** | Que delegaciones, ACL y Kerberos quedaron bien tras el hardening | Pruebas de solo lectura y, en Tier 2, validación controlada (Kerberoasting sobre cuentas propias) | `ad-attacker` |
-| **Validación de defensas (purple team)** | Que el EDR/SIEM detecta y alerta lo que debe | Atomic Red Team / Caldera contra hosts propios, cruzado con las reglas Sigma de la Fase 4 | `evasion-specialist` + `detection-engineer` |
-| **Prueba de concepto de un hallazgo** | Que una vulnerabilidad reportada es real y explotable en tu entorno, para priorizar el arreglo | Validación acotada por hallazgo, no automática | `poc-validator`, `exploit-chainer` |
-| **Segmentación y movimiento lateral** | Que la segmentación de red contiene el alcance de un equipo comprometido | Mapa de alcanzabilidad entre segmentos propios (advisory) | `lateral-movement`, `network-attacker` |
+| **Postura de contraseñas y spraying seguro** | Que la política y el bloqueo de cuentas aguanten; detecta credenciales débiles/reutilizadas sin bloquear cuentas | Pruebas con límite de intentos contra el propio directorio, cruzadas con brechas conocidas | Auditoría de credenciales |
+| **Rutas de escalada de privilegios (Linux ofensivo)** | Que el endurecimiento cerró SUID, sudoers, tareas y servicios abusables | Encadenar los hallazgos de `scan_host` en una ruta demostrable (advisory), al estilo GTFOBins/linPEAS | Privesc Linux |
+| **Exposición de Directorio Activo** | Que delegaciones, ACL y Kerberos quedaron bien tras el hardening | Pruebas de solo lectura y, en Tier 2, validación controlada (Kerberoasting sobre cuentas propias) | AD / Kerberos |
+| **Prueba de concepto de un hallazgo** | Que una vulnerabilidad reportada es real y explotable en tu entorno | Validación acotada por hallazgo, no automática | Explotación acotada |
+| **Segmentación y movimiento lateral** | Que la segmentación de red contiene el alcance de un equipo comprometido | Mapa de alcanzabilidad entre segmentos propios (advisory) | Movimiento lateral |
 
-Queda **fuera incluso de esta fase**: infraestructura de phishing e ingeniería social contra
-personas, C2 real, exfiltración de datos reales, anonimato del operador y persistencia duradera.
-Son técnicas de un compromiso contratado con terceros, no de endurecer lo propio.
+---
+
+## 🟣 Púrpura — el bucle de endurecimiento
+
+Une las dos vías en un ciclo medible: **escanear → documentar → arreglar → validar → detectar →
+re-endurecer**. Depende de ítems de ambas vías ya construidos.
+
+| Capacidad | Qué cierra | Depende de |
+|---|---|---|
+| **Ingeniería de detección** | Regla Sigma sugerida por hallazgo/técnica ATT&CK: que el SIEM detecte lo que el rojo probó | Mapeo ATT&CK (1.5) + Fase 4 |
+| **Validación de defensas (purple team)** | Que el EDR/SIEM detecta y alerta lo que debe | Atomic Red Team / Caldera contra hosts propios, cruzado con las reglas Sigma | Vía Roja + Ingeniería de detección |
+| **Bucle de revalidación** | Que el arreglo resiste y no hay regresión | `revalidate` + `runs_diff` (ya hechos) + validación roja |
+
+---
+
+## Cómo llegamos aquí
+
+El diseño destiló la revisión de [`pentest-ai-agents`](https://github.com/0xSteph/pentest-ai-agents)
+(tomar su modelo, no su dependencia de la nube) y, más tarde, de [ARTEX](https://github.com/BaaRai/ARTEX)
+y [Pentester71](https://github.com/secsalem/Pentester71) (ideas de diseño: veredicto de 3 estados,
+gate determinista, frontera de salida no confiable, higiene de releases — **ideas, no su código ni
+sus capacidades ofensivas**). La tabla de cobertura frente a `pentest-ai-agents` v3.4.0 queda como
+referencia histórica.
+
+<details>
+<summary>Cobertura frente a <code>pentest-ai-agents</code> v3.4.0 (revisión 2026-11-18)</summary>
+
+| Dominio (sus agentes) | Xolotl hoy | Vía |
+|---|---|---|
+| Código (`code-auditor`) | ✅ `scan_static`, `scan_codeql` | 🔵 |
+| Vulnerabilidades (`vuln-scanner`) | ✅ `scan_network`, `scan_dast`, `scan_host` | 🔵 |
+| Verificación de arreglos (`fix-verifier`) | ✅ `runs_diff`, `revalidate` + `appsec-fix` | 🟣 |
+| Informes (`report-generator`) | ✅ `report_generate` (técnico + resumen ejecutivo) | 🔵 |
+| Memoria (`/memory`, `findings.sh`, `doctor.sh`) | ✅ BD SQLite, `inventory`, `xolotl_doctor`, `handoff` | 🧩 |
+| Recomendación (`/recommend`, `/agents-for`) | ✅ `inventory view=next`, `eval_plan` | 🧩 |
+| Puntuación de riesgo (`risk-scorer`) | ✅ EPSS + CISA KEV + CVSS (`risk_feeds`) | 🧩 |
+| Validación (`poc-validator`) | ✅ `revalidate` (3 estados) + Nuclei por plantilla | 🟣 |
+| Orquestación (`swarm-orchestrator`) | ✅ `eval_plan` + skill `appsec-plan` | 🧩 |
+| Cumplimiento (`compliance-mapper`, `stig-analyst`) | 🟡 CWE por hallazgo | 🔵 Mapeo a marcos (1.5); STIG/CIS (Fase 2) |
+| Planeación (`engagement-planner`, `attack-planner`) | 🟡 `dast_scope` | 🔴 Plan de compromiso + ATT&CK (1.5) |
+| Nube y contenedores (`cloud-security`, `container-breakout`) | 🟡 imágenes e IaC | 🔵 Prowler + Kubernetes (Fase 2) |
+| Directorio Activo (`ad-attacker`, `password-auditor`) | ❌ | 🔵 postura (Fase 2) · 🔴 validación (Fase 5) |
+| Escalada de privilegios (`privesc-advisor`) | 🟡 SUID/sudoers/kernel en `scan_host` | 🔴 rutas demostrables (Fase 5) |
+| Cadena de suministro y CI/CD (`supply-chain-auditor`, `cicd-redteam`) | 🟡 SCA | 🔵 Fase 2.5 |
+| Criptografía (`crypto-analyzer`) | 🟡 TLS en red | 🔵 mal uso en código (Fase 2.5) |
+| Recon y web/API (`recon-advisor`, `web-hunter`, `api-security`, `bug-bounty`) | 🟡 Nuclei | 🔵 Fase 3 |
+| Lógica de negocio (`bizlogic-hunter`) | ❌ | 🔵 lista guiada advisory (Fase 3) |
+| IA/LLM (`llm-redteam`, `ai-recon`) | ❌ | 🔵 evaluación de apps LLM propias (Fase 3) |
+| Base de datos (`database-attacker`) | 🟡 DAST genérico | 🔵 auditoría de configuración (Fase 2) |
+| Tráfico, IR, malware, reversa | ❌ | 🔵 Fase 4 (offline) |
+| Móvil, firmware, OT | ❌ | 🔵 análisis estático/pasivo (Fase 4) |
+| Detección y amenazas (`detection-engineer`, `threat-modeler`) | ❌ | 🟣 Fase 4 + bucle púrpura |
+| Validación ofensiva (`credential-tester`, `network-attacker`, `lateral-movement`, `exploit-chainer`, `payload-crafter`…) | ❌ | 🔴 Fase 5, sobre sistemas propios |
+| Validación de defensas (`evasion-specialist` como purple team) | ❌ | 🟣 bucle púrpura |
+| `ctf-solver`, `wireless-pentester` | — | Fuera de foco |
+
+`✅` cubierto · `🟡` parcial · `❌` falta.
+</details>
 
 ---
 
@@ -174,8 +219,9 @@ Son técnicas de un compromiso contratado con terceros, no de endurecer lo propi
 - Ningún servicio externo obligatorio ni telemetría.
 - Nada de DoS, escaneo masivo, ni evasión de detección para uso malicioso.
 - No reemplaza a un pentester ni al monitoreo de producción en tiempo real.
-- **Nada contra sistemas de terceros.** Toda capacidad ofensiva (Fase 5) es solo para
-  infraestructura propia, dentro del alcance registrado y con aprobación por comando.
-- **Fuera incluso de la Fase 5**: phishing e ingeniería social contra personas, C2 real,
-  exfiltración de datos reales, anonimato del operador y persistencia duradera.
+- **Nada contra sistemas de terceros.** Toda capacidad de la Vía Roja es solo para infraestructura
+  propia, dentro del alcance registrado y con aprobación por comando (el candado de la vía roja).
+- **Fuera incluso de la Vía Roja**: phishing e ingeniería social contra personas, C2 real,
+  exfiltración de datos reales, anonimato del operador y persistencia duradera. Son técnicas de un
+  compromiso contratado con terceros, no de endurecer lo propio.
 - Pruebas que requieren hardware dedicado (inalámbricas, UART/JTAG) y CTF.
