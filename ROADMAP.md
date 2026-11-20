@@ -93,7 +93,7 @@ que tú entregas; lo que toca un sistema vivo respeta Tier 1/Tier 2 y el alcance
 | Kubernetes: postura | ✅ `scan_k8s` (kube-bench, CIS): nodo/kubelet, RBAC y políticas, Tier 1 (Job para AKS/EKS/GKE o binario). Pendiente: Kubescape (NSA/MITRE) para análisis más profundo | Usuario de lectura (kubeconfig RO) |
 | Windows Server | ✅ `scan_windows` (recolector PowerShell de solo lectura, local o por WinRM): SMBv1, firma SMB, WDigest, UAC, LLMNR, Defender, firewall, RDP/NLA, Guest, admins locales, PowerShell v2; mapea a ATT&CK (T1003/T1210/T1557). Pendiente: HardeningKitty para el CIS Windows completo | Admin local de lectura |
 | Directorio Activo: postura | ✅ `scan_ad` (solo lectura, PowerShell): política de contraseñas vs NIST/CIS, cuentas privilegiadas, delegación sin restricción, Kerberoasting/AS-REP, krbtgt, MachineAccountQuota, cuentas inactivas (estilo PingCastle). Los hallazgos Kerberos mapean a ATT&CK T1558. Pendiente: enumeración de ACL riesgosas objeto por objeto | Usuario de lectura del dominio |
-| Bases de datos: configuración | ✅ **PostgreSQL y MySQL/MariaDB** (`scan_db`): cifrado (TLS), autenticación (pg_hba / cuentas sin contraseña, anónimas, plugin débil), exposición de red, cuentas privilegiadas y auditoría — con cuenta RO, Tier 1. Pendiente: SQL Server (mismo armazón) | Usuario de lectura |
+| Bases de datos: configuración | ✅ **PostgreSQL, MySQL/MariaDB y SQL Server** (`scan_db`): cifrado (TLS), autenticación, exposición de red, cuentas privilegiadas, superficie de ejecución (xp_cmdshell/OLE/CLR) y auditoría — con cuenta RO, Tier 1 | Usuario de lectura |
 | Monitoreo continuo | API de Wazuh (vulnerabilidades + CIS) | Usuario de lectura |
 | **Hardening de Linux (del diplomado)** | Guías de endurecimiento accionables sobre los hallazgos de `scan_host`: SSH, kernel, SELinux/AppArmor, auditd, firewall, montajes | Usuario de lectura / credenciales |
 
@@ -201,7 +201,7 @@ referencia histórica.
 | Recon y web/API (`recon-advisor`, `web-hunter`, `api-security`, `bug-bounty`) | 🟡 Nuclei | 🔵 Fase 3 |
 | Lógica de negocio (`bizlogic-hunter`) | ❌ | 🔵 lista guiada advisory (Fase 3) |
 | IA/LLM (`llm-redteam`, `ai-recon`) | ❌ | 🔵 evaluación de apps LLM propias (Fase 3) |
-| Base de datos (`database-attacker`) | ✅ `scan_db` (PostgreSQL, MySQL) + 🟡 DAST genérico | 🔵 SQL Server (Fase 2) |
+| Base de datos (`database-attacker`) | ✅ `scan_db` (PostgreSQL, MySQL, SQL Server) + 🟡 DAST genérico | — |
 | Tráfico, IR, malware, reversa | ❌ | 🔵 Fase 4 (offline) |
 | Móvil, firmware, OT | ❌ | 🔵 análisis estático/pasivo (Fase 4) |
 | Detección y amenazas (`detection-engineer`, `threat-modeler`) | ❌ | 🟣 Fase 4 + bucle púrpura |

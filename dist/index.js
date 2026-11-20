@@ -40444,8 +40444,39 @@ function mysqlAdvisory(target) {
     "3. Volver: scan_db con engine=mysql y collected_file=<ruta de mysql-audit.txt>."
   ].join("\n");
 }
+var MSSQL_COLLECTOR = [
+  "SET NOCOUNT ON;",
+  "SELECT '===XOLOTL meta===';",
+  "SELECT 'version|' + CAST(SERVERPROPERTY('ProductVersion') AS varchar(50)) + ' ' + CAST(SERVERPROPERTY('Edition') AS varchar(80));",
+  "SELECT 'auth_mode|' + CASE SERVERPROPERTY('IsIntegratedSecurityOnly') WHEN 1 THEN 'windows' ELSE 'mixed' END;",
+  "SELECT '===XOLOTL settings===';",
+  "SELECT name + '|' + CAST(value_in_use AS varchar(20)) FROM sys.configurations WHERE name IN ('xp_cmdshell','Ole Automation Procedures','Ad Hoc Distributed Queries','clr enabled','cross db ownership chaining','remote access','scan for startup procs');",
+  "SELECT '===XOLOTL logins===';",
+  "SELECT name + '|' + CAST(is_disabled AS varchar(1)) + '|' + CAST(is_policy_checked AS varchar(1)) FROM sys.sql_logins;",
+  "SELECT '===XOLOTL sysadmins===';",
+  "SELECT p.name FROM sys.server_role_members rm JOIN sys.server_principals r ON rm.role_principal_id = r.principal_id JOIN sys.server_principals p ON rm.member_principal_id = p.principal_id WHERE r.name = 'sysadmin';"
+].join("\n");
+function mssqlAdvisory(target) {
+  const where2 = target ? `la instancia ${target}` : "la instancia SQL Server";
+  return [
+    `## Tier 1 \xB7 advisory \u2014 auditor\xEDa de configuraci\xF3n de ${where2} (solo lectura)`,
+    "Ninguna consulta cambia datos. Una cuenta con VIEW SERVER STATE y lectura del cat\xE1logo basta",
+    "(por ejemplo un login con el rol de servidor ##MS_DefinitionReader## / VIEW ANY DEFINITION).",
+    "",
+    "1. Guarda este script como mssql-collect.sql:",
+    "",
+    MSSQL_COLLECTOR,
+    "",
+    "2. Ejec\xFAtalo con sqlcmd sin encabezados y vuelca la salida a un archivo:",
+    '     sqlcmd -S <host> -U <usuario_lectura> -P <clave> -d master -h -1 -W -s "|" -i mssql-collect.sql -o mssql-audit.txt',
+    "   (con autenticaci\xF3n de Windows usa -E en vez de -U/-P.)",
+    "",
+    "3. Volver: scan_db con engine=mssql y collected_file=<ruta de mssql-audit.txt>."
+  ].join("\n");
+}
 function dbAdvisory(engine, target) {
   if (engine === "mysql") return mysqlAdvisory(target);
+  if (engine === "mssql") return mssqlAdvisory(target);
   const where2 = target ? `la base ${target}` : "la base PostgreSQL";
   return [
     `## Tier 1 \xB7 advisory \u2014 auditor\xEDa de configuraci\xF3n de ${where2} (solo lectura)`,
@@ -40558,11 +40589,55 @@ function mysqlChecks(sec, host) {
   }
   return { findings: out, version: version2 };
 }
+var SYSTEM_MSSQL_LOGINS = /^(##|NT SERVICE\\|NT AUTHORITY\\)/i;
+function mssqlChecks(sec, host) {
+  const settings = {};
+  let authMode = "";
+  let version2;
+  for (const l of sec.meta ?? []) {
+    const [k, ...rest] = l.split("|");
+    if (k === "version") version2 = rest.join("|");
+    if (k === "auth_mode") authMode = rest.join("|").trim().toLowerCase();
+  }
+  for (const l of sec.settings ?? []) {
+    const i = l.indexOf("|");
+    if (i > 0) settings[l.slice(0, i).toLowerCase()] = l.slice(i + 1).trim();
+  }
+  const logins = (sec.logins ?? []).map((l) => l.split("|")).filter((p) => p.length >= 3).map((p) => ({ name: p[0], disabled: p[1] === "1", policy: p[2] === "1" }));
+  const sysadmins = (sec.sysadmins ?? []).map((l) => l.trim()).filter(Boolean);
+  const out = [];
+  const add = (rule, severity, title, description, remediation, evidence) => out.push({ tool: "db-audit", category: "config", severity, ruleId: rule, title, description, remediation, evidence, location: { target: host } });
+  const on = (k) => settings[k] === "1";
+  if (on("xp_cmdshell"))
+    add("XOL-MS-XPCMD", "critical", "xp_cmdshell habilitado en SQL Server", "xp_cmdshell ejecuta comandos del sistema operativo desde SQL: una inyecci\xF3n o un login comprometido se convierte en ejecuci\xF3n en el servidor.", "Deshabilitar: EXEC sp_configure 'xp_cmdshell',0; RECONFIGURE. Dejarlo solo si un proceso lo exige, muy acotado.", "xp_cmdshell=1");
+  if (on("ole automation procedures"))
+    add("XOL-MS-OLE", "high", "Ole Automation Procedures habilitado", "Permite instanciar objetos COM desde T-SQL (sp_OACreate), otra v\xEDa de ejecuci\xF3n y acceso al sistema.", "Deshabilitar Ole Automation Procedures salvo que una aplicaci\xF3n lo requiera.", "Ole Automation Procedures=1");
+  if (on("ad hoc distributed queries"))
+    add("XOL-MS-ADHOC", "medium", "Ad Hoc Distributed Queries habilitado", "OPENROWSET/OPENDATASOURCE permiten consultar or\xEDgenes externos y se abusan para exfiltraci\xF3n o relay de credenciales.", "Deshabilitar Ad Hoc Distributed Queries si no se usa.", "Ad Hoc Distributed Queries=1");
+  if (on("clr enabled"))
+    add("XOL-MS-CLR", "medium", "CLR habilitado en SQL Server", "El CLR permite ejecutar ensamblados .NET dentro de SQL; sin control de ensamblados firmados ampl\xEDa la superficie de ejecuci\xF3n.", "Deshabilitar CLR si no se usa, o exigir 'clr strict security' y ensamblados firmados.", "clr enabled=1");
+  if (on("cross db ownership chaining"))
+    add("XOL-MS-XDBCHAIN", "medium", "Cross DB Ownership Chaining habilitado a nivel de instancia", "Permite que permisos crucen bases por cadena de propiedad, facilitando la escalada entre bases.", "Deshabilitar a nivel de instancia; habilitarlo por base solo si es imprescindible.", "cross db ownership chaining=1");
+  if (authMode === "mixed")
+    add("XOL-MS-AUTH", "medium", "SQL Server en modo de autenticaci\xF3n mixto", "El modo mixto habilita logins SQL (usuario/clave), susceptibles de fuerza bruta y sin la gesti\xF3n centralizada de AD.", "Preferir autenticaci\xF3n de Windows/AD; si se necesita el modo mixto, aplicar pol\xEDticas de contrase\xF1a fuertes y monitoreo.", "IsIntegratedSecurityOnly=0 (mixto)");
+  const sa = logins.find((l) => l.name.toLowerCase() === "sa");
+  if (sa && !sa.disabled)
+    add("XOL-MS-SA", "medium", "Cuenta 'sa' habilitada", "La cuenta sa es el superusuario conocido de SQL Server y blanco de fuerza bruta.", "Deshabilitar sa (ALTER LOGIN sa DISABLE) o al menos renombrarla y ponerle una contrase\xF1a larga y aleatoria.", "sa habilitada");
+  const noPolicy = logins.filter((l) => !l.policy && !l.disabled && l.name.toLowerCase() !== "sa");
+  if (noPolicy.length)
+    add("XOL-MS-POLICY", "medium", `Logins SQL sin pol\xEDtica de contrase\xF1as (${noPolicy.length})`, "Con CHECK_POLICY desactivado, esos logins aceptan contrase\xF1as d\xE9biles y no se bloquean por intentos.", "ALTER LOGIN \u2026 WITH CHECK_POLICY = ON (y CHECK_EXPIRATION seg\xFAn el caso).", noPolicy.map((l) => l.name).join(", "));
+  const extraSa = sysadmins.filter((n) => n.toLowerCase() !== "sa" && !SYSTEM_MSSQL_LOGINS.test(n));
+  if (extraSa.length > 2)
+    add("XOL-MS-SYSADMIN", "medium", `Muchos miembros del rol sysadmin (${extraSa.length})`, "Cada sysadmin tiene control total de la instancia; cuantos m\xE1s, mayor superficie y menor control.", "Reducir sysadmin al m\xEDnimo; dar permisos acotados por base/rol a las aplicaciones.", extraSa.join(", "));
+  if (on("remote access"))
+    add("XOL-MS-REMOTE", "low", "Opci\xF3n 'remote access' habilitada", "La opci\xF3n heredada remote access permite procedimientos almacenados remotos (sp_addserver), rara vez necesaria.", "Deshabilitar: EXEC sp_configure 'remote access',0; RECONFIGURE.", "remote access=1");
+  return { findings: out, version: version2 };
+}
 function parseDbCollected(engine, text2, host = "base-de-datos") {
-  if (!/===XOLOTL (meta|settings|roles|hba|users)===/.test(text2))
+  if (!/===XOLOTL (meta|settings|roles|hba|users|logins|sysadmins)===/.test(text2))
     throw new Error("La salida no trae las marcas ===XOLOTL \u2026===. Genera el archivo con el script que da scan_db en modo advisory.");
   const sec = sections(text2);
-  const { findings, version: version2 } = engine === "mysql" ? mysqlChecks(sec, host) : pgChecks(sec, host);
+  const { findings, version: version2 } = engine === "mysql" ? mysqlChecks(sec, host) : engine === "mssql" ? mssqlChecks(sec, host) : pgChecks(sec, host);
   return { findings, version: version2, host };
 }
 
@@ -41766,9 +41841,9 @@ server.registerTool(
   "scan_db",
   {
     title: "Auditor\xEDa de configuraci\xF3n de base de datos",
-    description: "Audita la configuraci\xF3n de seguridad de una base de datos con una cuenta de SOLO LECTURA: cifrado en tr\xE1nsito (TLS), autenticaci\xF3n, exposici\xF3n de red, cuentas privilegiadas y auditor\xEDa. No se conecta ni instala nada: en modo advisory entrega el script SQL de solo lectura para correrlo a mano (flujo MobaXterm) y con collected_file parsea la salida. Motores: PostgreSQL y MySQL/MariaDB.",
+    description: "Audita la configuraci\xF3n de seguridad de una base de datos con una cuenta de SOLO LECTURA: cifrado en tr\xE1nsito (TLS), autenticaci\xF3n, exposici\xF3n de red, cuentas privilegiadas y auditor\xEDa. No se conecta ni instala nada: en modo advisory entrega el script SQL de solo lectura para correrlo a mano (flujo MobaXterm) y con collected_file parsea la salida. Motores: PostgreSQL, MySQL/MariaDB y SQL Server.",
     inputSchema: {
-      engine: external_exports.enum(["postgresql", "mysql"]).describe("Motor de base de datos: postgresql o mysql (incluye MariaDB)"),
+      engine: external_exports.enum(["postgresql", "mysql", "mssql"]).describe("Motor: postgresql, mysql (incluye MariaDB) o mssql (SQL Server)"),
       collected_file: external_exports.string().optional().describe("Archivo con la salida del script SQL de solo lectura que da el modo advisory"),
       target: external_exports.string().optional().describe("Etiqueta del servidor/base para el inventario (host o nombre)")
     },

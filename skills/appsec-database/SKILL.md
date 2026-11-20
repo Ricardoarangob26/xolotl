@@ -1,6 +1,6 @@
 ---
 name: appsec-database
-description: Auditar la configuración de seguridad de una base de datos con el MCP Xolotl, usando el tool scan_db y una cuenta de SOLO LECTURA. Úsala cuando pidan revisar o endurecer una base de datos, auditar su configuración, cifrado, autenticación, roles/privilegios o exposición de red, o comparar su configuración con buenas prácticas. Sin conexión propia: entrega consultas de solo lectura para correrlas a mano y parsea la salida. Motores: PostgreSQL y MySQL/MariaDB. Nivel de acceso: usuario de lectura.
+description: Auditar la configuración de seguridad de una base de datos con el MCP Xolotl, usando el tool scan_db y una cuenta de SOLO LECTURA. Úsala cuando pidan revisar o endurecer una base de datos, auditar su configuración, cifrado, autenticación, roles/privilegios o exposición de red, o comparar su configuración con buenas prácticas. Sin conexión propia: entrega consultas de solo lectura para correrlas a mano y parsea la salida. Motores: PostgreSQL, MySQL/MariaDB y SQL Server. Nivel de acceso: usuario de lectura.
 ---
 
 # Auditoría de configuración de bases de datos
@@ -14,7 +14,7 @@ cuenta de lectura, y parsea la salida a hallazgos de configuración.
 
 - **PostgreSQL** — disponible.
 - **MySQL / MariaDB** — disponible.
-- SQL Server — en la hoja de ruta (mismo armazón).
+- **SQL Server** — disponible.
 
 ## El flujo (Tier 1, tu MobaXterm)
 

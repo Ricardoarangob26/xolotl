@@ -551,9 +551,9 @@ server.registerTool(
   {
     title: "Auditoría de configuración de base de datos",
     description:
-      "Audita la configuración de seguridad de una base de datos con una cuenta de SOLO LECTURA: cifrado en tránsito (TLS), autenticación, exposición de red, cuentas privilegiadas y auditoría. No se conecta ni instala nada: en modo advisory entrega el script SQL de solo lectura para correrlo a mano (flujo MobaXterm) y con collected_file parsea la salida. Motores: PostgreSQL y MySQL/MariaDB.",
+      "Audita la configuración de seguridad de una base de datos con una cuenta de SOLO LECTURA: cifrado en tránsito (TLS), autenticación, exposición de red, cuentas privilegiadas y auditoría. No se conecta ni instala nada: en modo advisory entrega el script SQL de solo lectura para correrlo a mano (flujo MobaXterm) y con collected_file parsea la salida. Motores: PostgreSQL, MySQL/MariaDB y SQL Server.",
     inputSchema: {
-      engine: z.enum(["postgresql", "mysql"]).describe("Motor de base de datos: postgresql o mysql (incluye MariaDB)"),
+      engine: z.enum(["postgresql", "mysql", "mssql"]).describe("Motor: postgresql, mysql (incluye MariaDB) o mssql (SQL Server)"),
       collected_file: z.string().optional().describe("Archivo con la salida del script SQL de solo lectura que da el modo advisory"),
       target: z.string().optional().describe("Etiqueta del servidor/base para el inventario (host o nombre)"),
     },

@@ -33,7 +33,7 @@ activan solas cuando pides algo de su área, o puedes invocarlas por nombre.
 | `appsec-dast` | Prueba dinámica de apps/APIs (Nuclei) | 🌑 sin acceso | Tier 1 / Tier 2 | capaz |
 | `appsec-audit` | Auditoría de código: SAST, SCA, secretos, IaC | 📄 código fuente | local | capaz |
 | `appsec-hosts` | Servidores Linux: CVE de paquetes y endurecimiento (+ Lynis) | 🌓 lectura / 🌕 credenciales | Tier 1 / Tier 2 | capaz |
-| `appsec-database` | Configuración de bases de datos (PostgreSQL, MySQL): cifrado, auth, roles | 🌓 usuario de lectura | Tier 1 | capaz |
+| `appsec-database` | Configuración de bases de datos (PostgreSQL, MySQL, SQL Server): cifrado, auth, roles | 🌓 usuario de lectura | Tier 1 | capaz |
 | `appsec-ad` | Postura de Active Directory: política, privilegios, Kerberos, delegación | 🌓 usuario de lectura del dominio | Tier 1 | capaz |
 | `appsec-windows` | Postura de Windows Server: SMBv1, WDigest, UAC, LLMNR, Defender, RDP | 🌓 admin local de lectura | Tier 1 | capaz |
 | `appsec-k8s` | Postura de Kubernetes (CIS / kube-bench): kubelet, RBAC, políticas | 🌓 lectura del clúster | Tier 1 | capaz |
