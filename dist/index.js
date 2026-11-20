@@ -37493,10 +37493,10 @@ function inventorySummary() {
   const all = b.allFindings();
   const active = all.filter((r) => !SUPPRESSED.has(r.status));
   const bySeverity = {};
-  const byCategory = {};
+  const byCategory2 = {};
   for (const r of active) {
     bySeverity[r.severity] = (bySeverity[r.severity] ?? 0) + 1;
-    byCategory[r.category] = (byCategory[r.category] ?? 0) + 1;
+    byCategory2[r.category] = (byCategory2[r.category] ?? 0) + 1;
   }
   const last = b.allRuns().slice(-1)[0];
   return {
@@ -37506,7 +37506,7 @@ function inventorySummary() {
     findingsActive: active.length,
     findingsTotal: all.length,
     bySeverity,
-    byCategory,
+    byCategory: byCategory2,
     lastRun: last ? { id: last.id, kind: last.kind, target: last.target, at: last.finished_at } : void 0
   };
 }
@@ -37721,7 +37721,7 @@ var SUPPRESSED2 = ["false_positive", "accepted_risk", "fixed"];
 var isSuppressed = (f) => !!f.triage && SUPPRESSED2.includes(f.triage.status);
 function summarize(findings) {
   const bySeverity = Object.fromEntries(SEVERITIES.map((s) => [s, 0]));
-  const byCategory = Object.fromEntries(CATEGORIES.map((c) => [c, 0]));
+  const byCategory2 = Object.fromEntries(CATEGORIES.map((c) => [c, 0]));
   let suppressed = 0;
   for (const f of findings) {
     if (isSuppressed(f)) {
@@ -37729,9 +37729,9 @@ function summarize(findings) {
       continue;
     }
     bySeverity[f.severity]++;
-    byCategory[f.category]++;
+    byCategory2[f.category]++;
   }
-  return { total: findings.length - suppressed, bySeverity, byCategory, suppressed };
+  return { total: findings.length - suppressed, bySeverity, byCategory: byCategory2, suppressed };
 }
 function saveRun(meta3, findings) {
   const dir = runDir(meta3.id);
@@ -37805,6 +37805,142 @@ function setTriage(findings, status, note) {
     else db[f.fingerprint] = { status, note, at, title: f.title };
   }
   fs8.writeFileSync(TRIAGE_FILE, JSON.stringify(db, null, 2));
+}
+
+// src/attack.ts
+var CATALOG = {
+  T1190: { name: "Exploit Public-Facing Application", tactic: "Acceso inicial" },
+  T1133: { name: "External Remote Services", tactic: "Acceso inicial" },
+  T1059: { name: "Command and Scripting Interpreter", tactic: "Ejecuci\xF3n" },
+  "T1059.007": { name: "Command and Scripting Interpreter: JavaScript", tactic: "Ejecuci\xF3n" },
+  T1203: { name: "Exploitation for Client Execution", tactic: "Ejecuci\xF3n" },
+  T1068: { name: "Exploitation for Privilege Escalation", tactic: "Escalada de privilegios" },
+  T1548: { name: "Abuse Elevation Control Mechanism", tactic: "Escalada de privilegios" },
+  "T1548.001": { name: "Setuid and Setgid", tactic: "Escalada de privilegios" },
+  "T1548.003": { name: "Sudo and Sudo Caching", tactic: "Escalada de privilegios" },
+  T1611: { name: "Escape to Host", tactic: "Escalada de privilegios" },
+  T1078: { name: "Valid Accounts", tactic: "Acceso con credenciales v\xE1lidas" },
+  T1136: { name: "Create Account", tactic: "Persistencia" },
+  T1053: { name: "Scheduled Task/Job", tactic: "Persistencia" },
+  T1110: { name: "Brute Force", tactic: "Acceso a credenciales" },
+  "T1552.001": { name: "Unsecured Credentials: Credentials In Files", tactic: "Acceso a credenciales" },
+  T1040: { name: "Network Sniffing", tactic: "Acceso a credenciales" },
+  T1557: { name: "Adversary-in-the-Middle", tactic: "Acceso a credenciales" },
+  "T1021.004": { name: "Remote Services: SSH", tactic: "Movimiento lateral" },
+  T1046: { name: "Network Service Discovery", tactic: "Descubrimiento" },
+  T1083: { name: "File and Directory Discovery", tactic: "Descubrimiento" },
+  T1526: { name: "Cloud Service Discovery", tactic: "Descubrimiento" },
+  T1005: { name: "Data from Local System", tactic: "Recolecci\xF3n" },
+  T1222: { name: "File and Directory Permissions Modification", tactic: "Evasi\xF3n de defensas" },
+  "T1562.001": { name: "Impair Defenses: Disable or Modify Tools", tactic: "Evasi\xF3n de defensas" }
+};
+var TACTIC_ORDER = [
+  "Acceso inicial",
+  "Ejecuci\xF3n",
+  "Persistencia",
+  "Escalada de privilegios",
+  "Evasi\xF3n de defensas",
+  "Acceso a credenciales",
+  "Acceso con credenciales v\xE1lidas",
+  "Descubrimiento",
+  "Movimiento lateral",
+  "Recolecci\xF3n"
+];
+var tacticRank = (t) => {
+  const i = TACTIC_ORDER.indexOf(t);
+  return i < 0 ? TACTIC_ORDER.length : i;
+};
+function byRuleId(ruleId) {
+  const r = ruleId.toUpperCase();
+  if (r.startsWith("XOL-NET-EXP-")) return ["T1133", "T1046"];
+  if (r.startsWith("XOL-TLS-")) return ["T1557", "T1040"];
+  const exact = {
+    "XOL-SSH-001": ["T1021.004", "T1110"],
+    "XOL-SSH-002": ["T1110", "T1021.004"],
+    "XOL-SSH-003": ["T1078"],
+    "XOL-SSH-005": ["T1110"],
+    "XOL-SSH-006": ["T1557", "T1040"],
+    "XOL-ACC-001": ["T1136", "T1078"],
+    "XOL-ACC-002": ["T1078"],
+    "XOL-ACC-003": ["T1548.003"],
+    "XOL-ACC-004": ["T1611"],
+    "XOL-PAT-001": ["T1068"],
+    "XOL-PAT-002": ["T1068"],
+    "XOL-NET-001": ["T1133"],
+    "XOL-NET-002": ["T1133", "T1046"],
+    "XOL-NET-003": ["T1040"],
+    "XOL-MAC-001": ["T1562.001"],
+    "XOL-MAC-002": ["T1562.001"],
+    "XOL-MAC-003": ["T1562.001"],
+    "XOL-FS-001": ["T1222", "T1548"],
+    "XOL-FS-002": ["T1053", "T1222"],
+    "XOL-FS-003": ["T1548.001"],
+    "XOL-FS-004": ["T1068"],
+    "XOL-LOG-001": ["T1562.001"]
+  };
+  return exact[r] ?? [];
+}
+function byCwe(cwes) {
+  const nums = new Set(cwes.map((c) => c.replace(/^CWE-/i, "")));
+  const out = [];
+  const add = (cwe, ...ids) => {
+    if (nums.has(cwe)) out.push(...ids);
+  };
+  add("89", "T1190");
+  add("78", "T1059", "T1190");
+  add("77", "T1059");
+  add("94", "T1059");
+  add("95", "T1059");
+  add("79", "T1059.007");
+  add("502", "T1190", "T1203");
+  add("918", "T1190");
+  add("611", "T1190");
+  add("22", "T1083", "T1005");
+  add("23", "T1083");
+  add("98", "T1190");
+  add("798", "T1552.001");
+  add("259", "T1552.001");
+  add("321", "T1552.001");
+  add("327", "T1557", "T1040");
+  add("326", "T1557");
+  add("295", "T1557");
+  add("287", "T1078");
+  add("306", "T1190");
+  add("862", "T1190");
+  return out;
+}
+function byCategory(f) {
+  switch (f.category) {
+    case "secret":
+      return ["T1552.001"];
+    case "sca":
+    case "container":
+      return ["T1190"];
+    case "host":
+      return f.package ? ["T1068"] : [];
+    case "dast":
+      return ["T1190"];
+    case "network":
+      return ["T1046"];
+    case "iac":
+      return ["T1190"];
+    default:
+      return [];
+  }
+}
+function attackFor(f) {
+  let ids = byRuleId(f.ruleId);
+  if (!ids.length) ids = byCwe(f.cwe ?? []);
+  if (!ids.length) ids = byCategory(f);
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const id of ids) {
+    const meta3 = CATALOG[id];
+    if (!meta3 || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: meta3.name, tactic: meta3.tactic });
+  }
+  return out.slice(0, 3);
 }
 
 // src/report.ts
@@ -37938,8 +38074,49 @@ function details(f) {
   if (ids.length) rows.push(`- **Referencias:** ${ids.join(", ")}`);
   if (f.cvss) rows.push(`- **CVSS:** ${f.cvss.score}${f.cvss.version ? ` (v${f.cvss.version})` : ""}${f.cvss.source ? ` \xB7 ${f.cvss.source}` : ""}${f.cvss.vector ? ` \xB7 \`${f.cvss.vector}\`` : ""}`);
   if (riskEnriched(f)) rows.push(`- **Prioridad de riesgo:** ${f.risk.score}/100 \u2014 ${f.risk.factors.join("; ")}`);
+  const tech = attackFor(f);
+  if (tech.length) rows.push(`- **MITRE ATT&CK:** ${tech.map((t) => `${t.id} ${t.name} (${t.tactic})`).join("; ")}`);
   if (f.triage) rows.push(`- **Estado:** ${STATUS_ES[f.triage.status]}${f.triage.note ? ` \u2014 ${f.triage.note}` : ""}`);
   return rows;
+}
+function attackCoverage(active) {
+  const byTech = /* @__PURE__ */ new Map();
+  for (const f of active) {
+    for (const t of attackFor(f)) {
+      const e = byTech.get(t.id) ?? { tech: t, ids: [] };
+      if (!e.ids.includes(f.id)) e.ids.push(f.id);
+      byTech.set(t.id, e);
+    }
+  }
+  const byTactic = /* @__PURE__ */ new Map();
+  for (const e of byTech.values()) {
+    const g = byTactic.get(e.tech.tactic) ?? { tactic: e.tech.tactic, techniques: [] };
+    g.techniques.push(e);
+    byTactic.set(e.tech.tactic, g);
+  }
+  const groups = [...byTactic.values()].sort((a, b) => tacticRank(a.tactic) - tacticRank(b.tactic));
+  for (const g of groups) g.techniques.sort((a, b) => a.tech.id.localeCompare(b.tech.id));
+  return groups;
+}
+function attackLinesMd(active) {
+  const groups = attackCoverage(active);
+  if (!groups.length) return [];
+  const out = ["## Cobertura MITRE ATT&CK", "", "T\xE9cnicas que habilitan los hallazgos activos, por t\xE1ctica. \xDAtil para priorizar detecci\xF3n y planear la validaci\xF3n.", ""];
+  for (const g of groups) {
+    out.push(`**${g.tactic}**`);
+    for (const t of g.techniques) out.push(`- \`${t.tech.id}\` ${t.tech.name} \u2014 ${t.ids.join(", ")}`);
+    out.push("");
+  }
+  return out;
+}
+function attackHtml(active) {
+  const groups = attackCoverage(active);
+  if (!groups.length) return "";
+  const rows = groups.map((g) => {
+    const techs = g.techniques.map((t) => `<li><code>${t.tech.id}</code> ${esc2(t.tech.name)} \u2014 ${t.ids.map((i) => `<code>${i}</code>`).join(" ")}</li>`).join("");
+    return `<tr><td><b>${esc2(g.tactic)}</b></td><td><ul class="att">${techs}</ul></td></tr>`;
+  }).join("");
+  return `<h2>Cobertura MITRE ATT&CK</h2><p class="meta">T\xE9cnicas que habilitan los hallazgos activos, por t\xE1ctica.</p><table><tr><th>T\xE1ctica</th><th>T\xE9cnicas</th></tr>${rows}</table>`;
 }
 function toMarkdown(meta3, findings, includeSuppressed, prev) {
   const s = meta3.summary;
@@ -37965,6 +38142,7 @@ function toMarkdown(meta3, findings, includeSuppressed, prev) {
     for (const f of priority) out.push(`| ${f.id} | ${riskCell(f)} | ${SEV_ES[f.severity]} | ${trunc(f.title, 70).replace(/\|/g, "/")} | \`${where(f)}\` |`);
     out.push("");
   }
+  out.push(...attackLinesMd(active));
   for (const sev of SEVERITIES) {
     const group = active.filter((f) => f.severity === sev);
     if (!group.length) continue;
@@ -38031,12 +38209,14 @@ table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0 20px;displ
 pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;overflow-x:auto;font-size:12px;white-space:pre-wrap;word-break:break-word}code{font-size:12px;word-break:break-all}ul{padding-left:18px}
 .exec{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--low);border-radius:8px;padding:4px 16px 12px;margin:20px 0}.exec h2{margin:12px 0 4px}.exec p{margin:8px 0}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin:12px 0}.kpi{text-align:center;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px}.kpi b{display:block;font-size:22px}.kpi span{color:var(--mut);font-size:11px}
+ul.att{margin:0;padding-left:16px}ul.att li{margin:2px 0}
 </style></head><body><main>
 <h1>Informe de seguridad \u2014 ${esc2(meta3.target)}</h1><div class="meta">Corrida ${esc2(meta3.id)} \xB7 ${esc2(meta3.kind)} \xB7 ${meta3.startedAt.replace("T", " ").slice(0, 16)} UTC \xB7 ${s.total} hallazgos activos${s.suppressed ? `, ${s.suppressed} descartados` : ""}</div>
 ${execHtml(buildExecSummary(meta3, findings, prev))}
 <div class="tiles">${tiles}</div>
 <h2>Herramientas</h2><table><tr><th>Herramienta</th><th>Versi\xF3n</th><th>Estado</th><th>Hallazgos</th><th>Nota</th></tr>${tools}</table>
 ${priorityRows ? `<h2>Prioridad por riesgo</h2><p class="meta">Orden por explotabilidad real (EPSS/CISA KEV), no solo por severidad.</p><table><tr><th>#</th><th>Riesgo</th><th>Severidad</th><th>Hallazgo</th><th>D\xF3nde</th></tr>${priorityRows}</table>` : ""}
+${attackHtml(active)}
 <h2>Hallazgos</h2>${cards || "<p>Sin hallazgos activos.</p>"}
 ${suppressedRows ? `<h2>Descartados en el triage</h2><table><tr><th>ID</th><th>Severidad</th><th>Hallazgo</th><th>Estado</th><th>Nota</th></tr>${suppressedRows}</table>` : ""}
 </main></body></html>`;
@@ -38052,7 +38232,10 @@ function toSarif(meta3, findings) {
       id: f.ruleId,
       shortDescription: { text: trunc(f.title, 200) },
       helpUri: f.references?.[0],
-      properties: { "security-severity": f.cvss ? String(f.cvss.score) : SARIF_SCORE[f.severity], tags: ["security", f.category, ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`)] }
+      properties: {
+        "security-severity": f.cvss ? String(f.cvss.score) : SARIF_SCORE[f.severity],
+        tags: ["security", f.category, ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`), ...attackFor(f).map((t) => `external/attack/${t.id}`)]
+      }
     });
   }
   return {

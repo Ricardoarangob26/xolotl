@@ -1,5 +1,6 @@
 import { CATEGORIES, Finding, SEVERITIES, sevRank, where } from "./findings.js";
 import { isSuppressed, RunMeta } from "./store.js";
+import { attackFor, tacticRank, Technique } from "./attack.js";
 
 /** ¿La prioridad aporta algo más allá de la severidad? (feeds o criticidad del activo) */
 const riskEnriched = (f: Finding): boolean => !!f.risk && (f.risk.kev || f.risk.epss !== undefined || !!f.risk.assetCriticality);
@@ -182,8 +183,63 @@ function details(f: Finding): string[] {
   if (ids.length) rows.push(`- **Referencias:** ${ids.join(", ")}`);
   if (f.cvss) rows.push(`- **CVSS:** ${f.cvss.score}${f.cvss.version ? ` (v${f.cvss.version})` : ""}${f.cvss.source ? ` · ${f.cvss.source}` : ""}${f.cvss.vector ? ` · \`${f.cvss.vector}\`` : ""}`);
   if (riskEnriched(f)) rows.push(`- **Prioridad de riesgo:** ${f.risk!.score}/100 — ${f.risk!.factors.join("; ")}`);
+  const tech = attackFor(f);
+  if (tech.length) rows.push(`- **MITRE ATT&CK:** ${tech.map((t) => `${t.id} ${t.name} (${t.tactic})`).join("; ")}`);
   if (f.triage) rows.push(`- **Estado:** ${STATUS_ES[f.triage.status]}${f.triage.note ? ` — ${f.triage.note}` : ""}`);
   return rows;
+}
+
+// ───────────────────────────── Cobertura MITRE ATT&CK ─────────────────────────────
+
+interface TacticGroup {
+  tactic: string;
+  techniques: Array<{ tech: Technique; ids: string[] }>;
+}
+
+function attackCoverage(active: Finding[]): TacticGroup[] {
+  const byTech = new Map<string, { tech: Technique; ids: string[] }>();
+  for (const f of active) {
+    for (const t of attackFor(f)) {
+      const e = byTech.get(t.id) ?? { tech: t, ids: [] };
+      if (!e.ids.includes(f.id)) e.ids.push(f.id);
+      byTech.set(t.id, e);
+    }
+  }
+  const byTactic = new Map<string, TacticGroup>();
+  for (const e of byTech.values()) {
+    const g = byTactic.get(e.tech.tactic) ?? { tactic: e.tech.tactic, techniques: [] };
+    g.techniques.push(e);
+    byTactic.set(e.tech.tactic, g);
+  }
+  const groups = [...byTactic.values()].sort((a, b) => tacticRank(a.tactic) - tacticRank(b.tactic));
+  for (const g of groups) g.techniques.sort((a, b) => a.tech.id.localeCompare(b.tech.id));
+  return groups;
+}
+
+function attackLinesMd(active: Finding[]): string[] {
+  const groups = attackCoverage(active);
+  if (!groups.length) return [];
+  const out = ["## Cobertura MITRE ATT&CK", "", "Técnicas que habilitan los hallazgos activos, por táctica. Útil para priorizar detección y planear la validación.", ""];
+  for (const g of groups) {
+    out.push(`**${g.tactic}**`);
+    for (const t of g.techniques) out.push(`- \`${t.tech.id}\` ${t.tech.name} — ${t.ids.join(", ")}`);
+    out.push("");
+  }
+  return out;
+}
+
+function attackHtml(active: Finding[]): string {
+  const groups = attackCoverage(active);
+  if (!groups.length) return "";
+  const rows = groups
+    .map((g) => {
+      const techs = g.techniques
+        .map((t) => `<li><code>${t.tech.id}</code> ${esc(t.tech.name)} — ${t.ids.map((i) => `<code>${i}</code>`).join(" ")}</li>`)
+        .join("");
+      return `<tr><td><b>${esc(g.tactic)}</b></td><td><ul class="att">${techs}</ul></td></tr>`;
+    })
+    .join("");
+  return `<h2>Cobertura MITRE ATT&CK</h2><p class="meta">Técnicas que habilitan los hallazgos activos, por táctica.</p><table><tr><th>Táctica</th><th>Técnicas</th></tr>${rows}</table>`;
 }
 
 export function toMarkdown(meta: RunMeta, findings: Finding[], includeSuppressed: boolean, prev?: PriorRun): string {
@@ -211,6 +267,8 @@ export function toMarkdown(meta: RunMeta, findings: Finding[], includeSuppressed
     for (const f of priority) out.push(`| ${f.id} | ${riskCell(f)} | ${SEV_ES[f.severity]} | ${trunc(f.title, 70).replace(/\|/g, "/")} | \`${where(f)}\` |`);
     out.push("");
   }
+
+  out.push(...attackLinesMd(active));
 
   for (const sev of SEVERITIES) {
     const group = active.filter((f) => f.severity === sev);
@@ -298,12 +356,14 @@ table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0 20px;displ
 pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;overflow-x:auto;font-size:12px;white-space:pre-wrap;word-break:break-word}code{font-size:12px;word-break:break-all}ul{padding-left:18px}
 .exec{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--low);border-radius:8px;padding:4px 16px 12px;margin:20px 0}.exec h2{margin:12px 0 4px}.exec p{margin:8px 0}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin:12px 0}.kpi{text-align:center;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px}.kpi b{display:block;font-size:22px}.kpi span{color:var(--mut);font-size:11px}
+ul.att{margin:0;padding-left:16px}ul.att li{margin:2px 0}
 </style></head><body><main>
 <h1>Informe de seguridad — ${esc(meta.target)}</h1><div class="meta">Corrida ${esc(meta.id)} · ${esc(meta.kind)} · ${meta.startedAt.replace("T", " ").slice(0, 16)} UTC · ${s.total} hallazgos activos${s.suppressed ? `, ${s.suppressed} descartados` : ""}</div>
 ${execHtml(buildExecSummary(meta, findings, prev))}
 <div class="tiles">${tiles}</div>
 <h2>Herramientas</h2><table><tr><th>Herramienta</th><th>Versión</th><th>Estado</th><th>Hallazgos</th><th>Nota</th></tr>${tools}</table>
 ${priorityRows ? `<h2>Prioridad por riesgo</h2><p class="meta">Orden por explotabilidad real (EPSS/CISA KEV), no solo por severidad.</p><table><tr><th>#</th><th>Riesgo</th><th>Severidad</th><th>Hallazgo</th><th>Dónde</th></tr>${priorityRows}</table>` : ""}
+${attackHtml(active)}
 <h2>Hallazgos</h2>${cards || "<p>Sin hallazgos activos.</p>"}
 ${suppressedRows ? `<h2>Descartados en el triage</h2><table><tr><th>ID</th><th>Severidad</th><th>Hallazgo</th><th>Estado</th><th>Nota</th></tr>${suppressedRows}</table>` : ""}
 </main></body></html>`;
@@ -322,7 +382,10 @@ export function toSarif(meta: RunMeta, findings: Finding[]): object {
       id: f.ruleId,
       shortDescription: { text: trunc(f.title, 200) },
       helpUri: f.references?.[0],
-      properties: { "security-severity": f.cvss ? String(f.cvss.score) : SARIF_SCORE[f.severity], tags: ["security", f.category, ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`)] },
+      properties: {
+        "security-severity": f.cvss ? String(f.cvss.score) : SARIF_SCORE[f.severity],
+        tags: ["security", f.category, ...(f.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`), ...attackFor(f).map((t) => `external/attack/${t.id}`)],
+      },
     });
   }
   return {
