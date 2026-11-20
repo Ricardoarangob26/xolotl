@@ -47,7 +47,7 @@ copiar agentes, sino que cada dominio defensivo o de evaluación tenga motor, sk
 | Verificación de arreglos (`fix-verifier`) | ✅ `runs_diff` + `appsec-fix` | — |
 | Informes (`report-generator`) | ✅ `report_generate` (técnico) | Resumen ejecutivo → Fase 1.5 |
 | Memoria (`/memory`, `findings.sh`, `doctor.sh`) | ✅ BD SQLite, `inventory`, `xolotl_doctor` | Traspaso de compromiso → Fase 1.5 |
-| Recomendación (`/recommend`, `/agents-for`) | 🟡 las skills se activan solas | Siguiente paso sugerido → Fase 1.5 |
+| Recomendación (`/recommend`, `/agents-for`) | ✅ `inventory view=next` propone qué evaluar por activo | — |
 | Puntuación de riesgo (`risk-scorer`) | ✅ EPSS + CISA KEV sobre la severidad (`risk_feeds`) | — |
 | Cumplimiento (`compliance-mapper`, `stig-analyst`) | 🟡 CWE por hallazgo | Mapeo a marcos → Fase 1.5; STIG/CIS → Fase 2 |
 | Validación (`poc-validator`) | 🟡 Nuclei confirma por plantilla | Revalidación no destructiva → Fase 1.5 |
@@ -84,7 +84,7 @@ Es lo más barato y lo que más valor agrega: todo lo que ya se escanea gana con
 | **Plan de compromiso** | Skill `appsec-engagement`: reglas de enfrentamiento, alcance y ventanas sobre `dast_scope`, con plantilla exportable. | `engagement-planner` |
 | **Resumen ejecutivo** | Sección de negocio en el informe: tendencia (nuevos/persistentes), top de riesgo, avance de remediación. | `report-generator` |
 | **Traspaso de compromiso** ✅ | Tool `handoff` (export/import): un archivo JSON con alcance, triage, criticidad de activos, inventario acumulado y los artefactos de cada corrida, para retomar en otra sesión o máquina (fusión o reemplazo). No incluye los feeds (se rebajan con `risk_feeds`). | `handoff.sh` |
-| **Siguiente paso sugerido** | `inventory` propone qué falta evaluar por activo (por ejemplo, "tiene 443 abierto y no tiene DAST", o "host sin CIS"). | `/recommend` |
+| **Siguiente paso sugerido** ✅ | `inventory view=next`: por activo, infiere su tipo (host, web, código, imagen), muestra una matriz de cobertura (qué pruebas aplican y cuáles ya corrieron) y propone las que faltan con su nivel (código/app/máquina) y el acceso que necesitan. Lee señales del propio inventario —puertos abiertos del hallazgo de red, p. ej. "puerto web 8080 abierto y sin DAST"; "host sin revisión de configuración"; "SAST hecho, falta CodeQL/IaC"— y ordena por criticidad del activo. Es el mapa de "qué tanto le puedo evaluar a cada sistema". | `/recommend` |
 | **Plan de evaluación por activo** | Skill que encadena las tools según el tipo de activo y el nivel de acceso, respetando Tier 1/Tier 2. | `swarm-orchestrator` |
 | **Revalidación no destructiva** | Repetir solo la verificación de un hallazgo (plantilla o regla puntual) para confirmar o descartar sin repetir toda la corrida. | `poc-validator` |
 | **Migraciones de esquema** | Versión del esquema en la BD y migraciones idempotentes. | `migrate.sh` |

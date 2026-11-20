@@ -7,7 +7,8 @@
  * En ambos casos el archivo vive en ~/.xolotl y no sale de la máquina.
  */
 import fs from "node:fs";
-import { DB_FILE, INVENTORY_FILE, ensureDirs } from "./config.js";
+import path from "node:path";
+import { DB_FILE, INVENTORY_FILE, RUNS_DIR, ensureDirs } from "./config.js";
 import type { Finding } from "./findings.js";
 import type { RunMeta } from "./store.js";
 import { criticalityOf, loadAssets } from "./assets.js";
@@ -374,4 +375,213 @@ export function inventorySummary(): InventorySummary {
     byCategory,
     lastRun: last ? { id: last.id, kind: last.kind, target: last.target, at: last.finished_at } : undefined,
   };
+}
+
+// ───────────────────────────── Siguiente paso sugerido por activo ─────────────────────────────
+//
+// Mira qué tipos de prueba ya corrieron sobre cada activo y propone los que faltan, según el
+// tipo de activo y las señales del propio inventario (puertos abiertos, lenguaje, etc). No lanza
+// nada: solo dice qué conviene correr después. Es el mapa de "qué tanto le puedo evaluar a esto".
+
+export type AssetKind = "host" | "web" | "code" | "image" | "unknown";
+export type TestLevel = "code" | "app" | "machine";
+
+export interface NextStep {
+  tool: string;
+  level: TestLevel;
+  reason: string;
+  needs?: string;
+}
+
+export interface CoverageCol {
+  label: string;
+  done: boolean;
+}
+
+export interface AssetPlan {
+  asset: string;
+  kind: AssetKind;
+  criticality?: string;
+  applied: string[];
+  ports: number[];
+  columns: CoverageCol[];
+  done: number;
+  total: number;
+  steps: NextStep[];
+}
+
+const WEB_PORTS = new Set([80, 443, 8080, 8443, 8000, 8008, 8081, 8888, 3000, 5000, 9000, 9443]);
+
+/** host:puerto → host · url → host · ruta → ella misma (no parte rutas de Windows «C:\\…»). */
+function baseHost(asset: string): string {
+  const m = /^([^/\\\s]+):(\d{1,5})$/.exec(asset);
+  return m ? m[1] : asset;
+}
+
+/** Activos que tocó una corrida que no dejó hallazgos (host limpio, repo limpio): se usan de respaldo. */
+function normTargets(kind: string, target: string): string[] {
+  if (kind === "host") return [target.split(" (")[0].trim()];
+  if (kind === "network" || kind === "dast")
+    return target
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((t) => {
+        try {
+          return new URL(t).host;
+        } catch {
+          return baseHost(t);
+        }
+      });
+  return [target.trim()];
+}
+
+/** Puertos abiertos por host, leídos del hallazgo inventario de red (XOL-NET-INVENTORY) de cada corrida. */
+function openPortsByHost(): Map<string, Set<number>> {
+  const res = new Map<string, Set<number>>();
+  let dirs: string[] = [];
+  try {
+    dirs = fs.readdirSync(RUNS_DIR);
+  } catch {
+    return res;
+  }
+  for (const id of dirs) {
+    const metaPath = path.join(RUNS_DIR, id, "meta.json");
+    const findPath = path.join(RUNS_DIR, id, "findings.json");
+    let kind = "";
+    try {
+      kind = (JSON.parse(fs.readFileSync(metaPath, "utf8")) as { kind?: string }).kind ?? "";
+    } catch {
+      continue;
+    }
+    if (kind !== "network") continue;
+    let arr: Array<{ ruleId?: string; location?: { target?: string }; evidence?: string; description?: string }>;
+    try {
+      arr = JSON.parse(fs.readFileSync(findPath, "utf8"));
+    } catch {
+      continue;
+    }
+    for (const f of arr) {
+      if (f?.ruleId !== "XOL-NET-INVENTORY") continue;
+      const host = f.location?.target;
+      if (!host) continue;
+      const set = res.get(host) ?? new Set<number>();
+      for (const m of String(f.evidence ?? f.description ?? "").matchAll(/(?:^|\n)\s*(\d{1,5})\//g)) set.add(Number(m[1]));
+      res.set(host, set);
+    }
+  }
+  return res;
+}
+
+const CRIT_RANK: Record<string, number> = { critica: 0, alta: 1, normal: 2, baja: 3 };
+
+function classify(applied: Set<string>, asset: string, hasPorts: boolean): AssetKind {
+  if (applied.has("image")) return "image";
+  if (asset.startsWith("http://") || asset.startsWith("https://") || applied.has("dast")) return "web";
+  if (applied.has("static") || applied.has("codeql") || applied.has("iac")) return "code";
+  if (applied.has("network") || applied.has("host") || hasPorts) return "host";
+  if (/[\\/]/.test(asset)) return "code";
+  return "unknown";
+}
+
+/** Propuesta de siguiente paso por activo: qué pruebas faltan según su tipo y sus señales. */
+export function suggestNextSteps(): AssetPlan[] {
+  const b = backend();
+  const findings = b.allFindings();
+  const runs = b.allRuns();
+  const links = b.allLinks();
+
+  const fpAsset = new Map(findings.map((f) => [f.fingerprint, baseHost(f.asset)]));
+  const runKind = new Map(runs.map((r) => [r.id, r.kind]));
+  const linkCount = new Map<string, number>();
+  const applied = new Map<string, Set<string>>();
+  const ports = new Map<string, Set<number>>();
+  const addK = (k: string, v?: string) => {
+    if (!v) return;
+    (applied.get(k) ?? applied.set(k, new Set()).get(k)!).add(v);
+  };
+  const addP = (k: string, v: number) => (ports.get(k) ?? ports.set(k, new Set()).get(k)!).add(v);
+
+  for (const l of links) {
+    linkCount.set(l.run_id, (linkCount.get(l.run_id) ?? 0) + 1);
+    addK(fpAsset.get(l.fingerprint) ?? "", runKind.get(l.run_id));
+  }
+  // Puerto embebido en el activo (host:puerto) de los hallazgos de red por puerto.
+  for (const f of findings) {
+    const m = /^([^/\\\s]+):(\d{1,5})$/.exec(f.asset);
+    if (m) addP(m[1], Number(m[2]));
+  }
+  // Puertos completos desde los artefactos de red (incluye puertos abiertos "limpios").
+  for (const [host, set] of openPortsByHost()) for (const p of set) addP(host, p);
+  // Respaldo: corridas sin hallazgos (sistema limpio) igual cuentan como "evaluado".
+  for (const r of runs) {
+    if (linkCount.get(r.id)) continue;
+    for (const t of normTargets(r.kind, r.target)) addK(baseHost(t), r.kind);
+  }
+
+  const assetsDb = loadAssets();
+  const keys = new Set<string>([...applied.keys(), ...ports.keys()].filter((k) => k && k !== "servidor"));
+  const plans: AssetPlan[] = [];
+
+  for (const asset of keys) {
+    const ap = applied.get(asset) ?? new Set<string>();
+    const ps = [...(ports.get(asset) ?? new Set<number>())].sort((a, b2) => a - b2);
+    const webPorts = ps.filter((p) => WEB_PORTS.has(p));
+    const kind = classify(ap, asset, ps.length > 0);
+    const columns: CoverageCol[] = [];
+    const steps: NextStep[] = [];
+
+    if (kind === "host" || kind === "web") {
+      const hasNet = ap.has("network");
+      const hasHost = ap.has("host");
+      const hasDast = ap.has("dast");
+      columns.push({ label: "red", done: hasNet });
+      if (kind === "host") columns.push({ label: "config", done: hasHost });
+      if (webPorts.length || kind === "web") columns.push({ label: "DAST", done: hasDast });
+
+      if (!hasNet) steps.push({ tool: "scan_network", level: "machine", reason: "sin mapa de puertos y servicios expuestos" });
+      if (kind === "host" && !hasHost)
+        steps.push({ tool: "scan_host", level: "machine", reason: "sin revisión de configuración (SSH, sudo, kernel, SUID, parches)", needs: "SSH con llave (host en dast_scope) o salida de host_collector" });
+      if ((webPorts.length || kind === "web") && !hasDast)
+        steps.push({
+          tool: "scan_dast",
+          level: "app",
+          reason: webPorts.length ? `puerto web ${webPorts.join(", ")} abierto y sin DAST` : "servicio web sin DAST",
+          needs: "registra el alcance con dast_scope action=add",
+        });
+    } else if (kind === "code") {
+      const hasStatic = ap.has("static");
+      const hasCodeql = ap.has("codeql");
+      const hasIac = ap.has("iac");
+      columns.push({ label: "SAST+SCA", done: hasStatic }, { label: "CodeQL", done: hasCodeql }, { label: "IaC", done: hasIac });
+      if (!hasStatic) steps.push({ tool: "scan_static", level: "code", reason: "sin SAST, SCA ni revisión de secretos" });
+      if (hasStatic && !hasCodeql) steps.push({ tool: "scan_codeql", level: "code", reason: "SAST hecho; falta el análisis profundo por consultas (lenguajes compilados)" });
+      if (!hasIac) steps.push({ tool: "scan_iac", level: "code", reason: "falta revisar IaC, Dockerfile y manifiestos si los hay" });
+    } else if (kind === "image") {
+      columns.push({ label: "imagen", done: ap.has("image") });
+    } else {
+      columns.push({ label: "evaluado", done: ap.size > 0 });
+    }
+
+    const total = columns.length;
+    const done = columns.filter((c) => c.done).length;
+    plans.push({
+      asset,
+      kind,
+      criticality: criticalityOf(asset, assetsDb)?.criticality,
+      applied: [...ap].sort(),
+      ports: ps,
+      columns,
+      done,
+      total,
+      steps,
+    });
+  }
+
+  plans.sort((a, b2) => {
+    if (!!a.steps.length !== !!b2.steps.length) return a.steps.length ? -1 : 1;
+    const ca = CRIT_RANK[a.criticality ?? "normal"] ?? 2;
+    const cb = CRIT_RANK[b2.criticality ?? "normal"] ?? 2;
+    return ca - cb || b2.steps.length - a.steps.length || a.asset.localeCompare(b2.asset);
+  });
+  return plans;
 }

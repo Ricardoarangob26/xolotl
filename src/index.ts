@@ -28,7 +28,7 @@ import { TOP_PORTS } from "./network.js";
 import COLLECTOR from "./collector.sh";
 import { addScope, builtinScope, expandTargets, loadScope, matchScope, removeScope } from "./scope.js";
 import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage } from "./store.js";
-import { findingHistory, inventorySummary, listAssets, queryFindings } from "./inventory.js";
+import { findingHistory, inventorySummary, listAssets, queryFindings, suggestNextSteps } from "./inventory.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -730,9 +730,9 @@ server.registerTool(
   {
     title: "Inventario acumulado",
     description:
-      "Consulta la memoria larga de Xolotl, que crece con cada corrida: resumen del ecosistema, activos vistos, hallazgos a través del tiempo (nuevos, persistentes, desaparecidos) y la historia de un hallazgo por su huella. Es la base para explorar sistemas y armar un inventario. No lanza escaneos.",
+      "Consulta la memoria larga de Xolotl, que crece con cada corrida: resumen del ecosistema, activos vistos, hallazgos a través del tiempo (nuevos, persistentes, desaparecidos), la historia de un hallazgo por su huella y el siguiente paso de evaluación sugerido por activo (qué pruebas faltan según el tipo de activo). Es la base para explorar sistemas y armar un inventario. No lanza escaneos.",
     inputSchema: {
-      view: z.enum(["summary", "assets", "findings", "history"]).default("summary").describe("summary: ecosistema; assets: activos; findings: hallazgos acumulados; history: un hallazgo en el tiempo"),
+      view: z.enum(["summary", "assets", "findings", "history", "next"]).default("summary").describe("summary: ecosistema; assets: activos; findings: hallazgos acumulados; history: un hallazgo en el tiempo; next: siguiente paso de evaluación por activo"),
       severity: z.enum(SEVERITIES).optional(),
       category: z.array(z.enum(CATEGORIES)).optional(),
       asset: z.string().optional().describe("Filtra por activo (host, URL o ruta); coincide por fragmento"),
@@ -774,6 +774,26 @@ server.registerTool(
             })
             .join("\n"),
         );
+      }
+      if (a.view === "next") {
+        const plans = suggestNextSteps();
+        if (!plans.length) return text("Inventario vacío. Lanza un escaneo (scan_static, scan_network, scan_host…) y aquí verás qué evaluar después por activo.");
+        const KIND_ES: Record<string, string> = { host: "host", web: "web", code: "código", image: "imagen", unknown: "activo" };
+        const LVL: Record<string, string> = { code: "código", app: "app", machine: "máquina" };
+        const pend = plans.filter((p) => p.steps.length);
+        const ok = plans.filter((p) => !p.steps.length);
+        const out: string[] = ["Plan de evaluación — siguiente paso por activo", ""];
+        for (const p of pend) {
+          const crit = p.criticality ? ` · criticidad ${p.criticality}` : "";
+          const cov = p.columns.map((c) => `${c.done ? "✅" : "⬜"} ${c.label}`).join("  ");
+          out.push(`${p.asset} · ${KIND_ES[p.kind]}${crit} · cobertura ${p.done}/${p.total}`);
+          out.push(`  ${cov}`);
+          for (const s of p.steps) out.push(`  → [${LVL[s.level]}] ${s.reason} · ${s.tool}${s.needs ? ` (${s.needs})` : ""}`);
+          out.push("");
+        }
+        if (ok.length) out.push(`Al día: ${ok.map((p) => `${p.asset} (${KIND_ES[p.kind]} ${p.done}/${p.total})`).join(" · ")}`);
+        if (!pend.length) out.splice(1, 0, "", "Todo lo inventariado tiene cubiertas las pruebas que aplican a su tipo.");
+        return text(out.join("\n").trimEnd());
       }
       if (a.view === "history") {
         if (!a.fingerprint) return fail("Indica la huella del hallazgo (fingerprint) para ver su historia.");
