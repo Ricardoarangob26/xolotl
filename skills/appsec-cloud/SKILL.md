@@ -11,9 +11,10 @@ hallazgos, respetando la severidad que Prowler asigna por check.
 
 ## Proveedores
 
-- **Azure** — disponible.
+- **Azure** — disponible, vía **Prowler** (JSON OCSF).
+- **Oracle Cloud (OCI)** — disponible, vía el **script CIS oficial de Oracle** (`cis_reports.py`,
+  CSV), porque Prowler no cubre OCI.
 - AWS y GCP — Prowler los cubre; entran con el mismo armazón (en la hoja de ruta).
-- **Oracle Cloud (OCI)** — Prowler **no** cubre OCI; necesita su propio benchmark CIS (hoja de ruta).
 
 ## El flujo (Tier 1)
 
@@ -26,7 +27,19 @@ hallazgos, respetando la severidad que Prowler asigna por check.
    ```
 3. `scan_cloud provider=azure collected_file=./prowler-out/<archivo>.ocsf.json` lo parsea.
 
-## Cómo se interpretan los resultados
+### Oracle Cloud (OCI)
+
+1. `scan_cloud provider=oci` devuelve las instrucciones.
+2. Con un usuario de **solo lectura** (grupo `Auditors` + política *read all-resources*):
+   ```
+   git clone https://github.com/oracle-quickstart/oci-cis-landingzone-quickstart
+   cd oci-cis-landingzone-quickstart/scripts/cis-reports
+   python3 cis_reports.py --report-directory ./oci-cis-out
+   ```
+3. `scan_cloud provider=oci collected_file=./oci-cis-out/<fecha>/cis_summary_report.csv target=<tenancy>`.
+   Cada recomendación no conforme es un hallazgo; Nivel 1 → medium, Nivel 2 → low.
+
+## Cómo se interpretan los resultados (Azure / Prowler)
 
 - **FAIL** → hallazgo con la **severidad que asigna Prowler** (critical/high/medium/low).
 - **MANUAL** → hallazgo **info**: Prowler no puede decidirlo solo; requiere revisión.

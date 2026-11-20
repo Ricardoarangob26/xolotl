@@ -40822,6 +40822,91 @@ function parseProwler(provider, text2, account = "suscripci\xF3n") {
   return { findings, totals, account: accountName };
 }
 
+// src/oci.ts
+function ociAdvisory(target) {
+  return [
+    `## Tier 1 \xB7 advisory \u2014 postura de Oracle Cloud (OCI) con el script CIS oficial (solo lectura)${target ? ` \xB7 ${target}` : ""}`,
+    "Oracle no est\xE1 cubierto por Prowler; se usa el script oficial cis_reports.py (CIS OCI Benchmark).",
+    "Solo lee: con un usuario de solo lectura (grupo 'Auditors' y la pol\xEDtica",
+    "'Allow group Auditors to read all-resources in tenancy') no cambia nada.",
+    "",
+    "1. Ten el OCI CLI configurado con ese usuario de solo lectura (~/.oci/config).",
+    "2. Descarga y ejecuta el script:",
+    "     git clone https://github.com/oracle-quickstart/oci-cis-landingzone-quickstart",
+    "     cd oci-cis-landingzone-quickstart/scripts/cis-reports",
+    "     python3 cis_reports.py --report-directory ./oci-cis-out",
+    "   (a\xF1ade --region o --all-resources seg\xFAn tu entorno; usa la auth de tu ~/.oci/config.)",
+    "",
+    "3. Trae el CSV resumen que lista cada recomendaci\xF3n con su cumplimiento:",
+    "     ./oci-cis-out/<fecha>/cis_summary_report.csv",
+    "",
+    "Volver: scan_cloud con provider=oci y collected_file=<ruta del cis_summary_report.csv>."
+  ].join("\n");
+}
+function parseCsvLine(line) {
+  const out = [];
+  let cur = "";
+  let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) {
+      if (c === '"' && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else if (c === '"') q = false;
+      else cur += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") {
+      out.push(cur);
+      cur = "";
+    } else cur += c;
+  }
+  out.push(cur);
+  return out.map((s) => s.trim());
+}
+var findCol = (headers, ...needles) => headers.findIndex((h) => needles.some((n) => h.toLowerCase().includes(n)));
+var isCompliant = (v) => /^(yes|true|compliant|pass|ok)\b/i.test(v.trim());
+function parseOciCis(csv, tenancy = "tenancy") {
+  const lines = csv.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) throw new Error("El CSV est\xE1 vac\xEDo o no tiene filas. Usa el cis_summary_report.csv que genera cis_reports.py.");
+  const headers = parseCsvLine(lines[0]);
+  const cRec = findCol(headers, "recommendation", "number", "cis", "#");
+  const cTitle = findCol(headers, "title", "name", "description");
+  const cComp = findCol(headers, "compliant", "status", "result");
+  const cLevel = findCol(headers, "level");
+  const cFind = findCol(headers, "finding", "total", "count");
+  if (cComp < 0 || cTitle < 0)
+    throw new Error("El CSV no parece el resumen CIS (faltan columnas de t\xEDtulo y cumplimiento). Usa cis_summary_report.csv, no los CSV por recurso.");
+  const findings = [];
+  let total = 0;
+  let nonCompliant = 0;
+  for (const line of lines.slice(1)) {
+    const cols = parseCsvLine(line);
+    if (cols.length <= cComp) continue;
+    const comp = cols[cComp] ?? "";
+    if (comp === "") continue;
+    total++;
+    if (isCompliant(comp)) continue;
+    nonCompliant++;
+    const rec = cRec >= 0 ? cols[cRec] : "";
+    const level = cLevel >= 0 ? cols[cLevel] : "";
+    const findingsCount = cFind >= 0 ? cols[cFind] : "";
+    const severity = /2/.test(level) ? "low" : "medium";
+    findings.push({
+      tool: "oci-cis",
+      category: "config",
+      severity,
+      ruleId: `CIS-OCI-${rec || findings.length + 1}`,
+      title: `${rec ? `${rec} ` : ""}${cols[cTitle] || "recomendaci\xF3n CIS OCI"}`.trim(),
+      description: `CIS OCI Benchmark${level ? ` \xB7 Nivel ${level}` : ""} \xB7 no conforme${findingsCount && findingsCount !== "0" ? ` \xB7 ${findingsCount} hallazgo(s)` : ""}.`,
+      remediation: "Revisa la recomendaci\xF3n en el CIS OCI Benchmark y corr\xEDgela en la consola o por Terraform (el landing zone de Oracle trae la configuraci\xF3n conforme).",
+      location: { target: tenancy }
+    });
+  }
+  if (!total) throw new Error("No se encontraron filas con estado de cumplimiento. \xBFEs el cis_summary_report.csv?");
+  return { findings, tenancy, total, nonCompliant };
+}
+
 // src/tier.ts
 var defaultMode = () => (process.env.XOLOTL_MODE ?? "").trim().toLowerCase() === "advisory" ? "advisory" : "execute";
 var resolveMode = (requested) => requested ?? defaultMode();
@@ -41629,20 +41714,30 @@ server.registerTool(
   "scan_cloud",
   {
     title: "Postura de nube (Prowler)",
-    description: "Eval\xFAa la postura de seguridad de una suscripci\xF3n de nube con Prowler (CIS y otros marcos), con una identidad de SOLO LECTURA. No se conecta ni instala nada: en modo advisory entrega c\xF3mo correr Prowler contra Azure (roles Reader + Security Reader) con salida JSON OCSF, y con collected_file parsea ese JSON a hallazgos. Respeta la severidad que asigna Prowler por check; agrupa por control y lista los recursos afectados. Primer proveedor: Azure.",
+    description: "Eval\xFAa la postura de seguridad de una nube con una identidad de SOLO LECTURA. No se conecta ni instala nada: en modo advisory entrega c\xF3mo correr la herramienta y con collected_file parsea su salida. Azure (y en el futuro AWS/GCP) con Prowler (salida JSON OCSF, respeta su severidad y agrupa por control). Oracle Cloud (OCI) con el script CIS oficial (cis_reports.py, salida CSV), porque Prowler no cubre OCI.",
     inputSchema: {
-      provider: external_exports.enum(["azure"]).describe("Proveedor de nube (por ahora azure)"),
-      collected_file: external_exports.string().optional().describe("Archivo JSON OCSF de Prowler (prowler azure --output-formats json-ocsf)"),
-      target: external_exports.string().optional().describe("Nombre/ID de la suscripci\xF3n para el inventario (si el JSON no lo trae)")
+      provider: external_exports.enum(["azure", "oci"]).describe("Proveedor: azure (Prowler) u oci (script CIS de Oracle)"),
+      collected_file: external_exports.string().optional().describe("Salida de la herramienta: JSON OCSF de Prowler (azure) o cis_summary_report.csv (oci)"),
+      target: external_exports.string().optional().describe("Nombre/ID de la suscripci\xF3n o tenancy para el inventario")
     },
     annotations: { readOnlyHint: true }
   },
   async (a) => {
     try {
-      if (!a.collected_file) return text(cloudAdvisory(a.provider, a.target));
+      if (!a.collected_file) return text(a.provider === "oci" ? ociAdvisory(a.target) : cloudAdvisory(a.provider, a.target));
       const file2 = path13.resolve(a.collected_file);
       if (!fs16.existsSync(file2)) return fail(`No existe ${file2}`);
-      const parsed = parseProwler(a.provider, fs16.readFileSync(file2, "utf8"), a.target?.trim() || "suscripci\xF3n");
+      const body = fs16.readFileSync(file2, "utf8");
+      if (a.provider === "oci") {
+        const parsed2 = parseOciCis(body, a.target?.trim() || "tenancy");
+        const { meta: meta4 } = newRun("cloud", parsed2.tenancy, { provider: "oci", source: file2, nonCompliant: parsed2.nonCompliant, total: parsed2.total });
+        const o2 = {
+          run: { tool: "oci-cis", status: "ok", count: parsed2.findings.length, message: `oci: ${parsed2.nonCompliant} no conformes de ${parsed2.total} recomendaciones` },
+          findings: parsed2.findings
+        };
+        return text(await finishRun(meta4, [o2], null));
+      }
+      const parsed = parseProwler(a.provider, body, a.target?.trim() || "suscripci\xF3n");
       const { meta: meta3 } = newRun("cloud", parsed.account, { provider: a.provider, source: file2, totals: parsed.totals });
       const o = {
         run: { tool: "prowler", status: "ok", count: parsed.findings.length, message: `${a.provider}: ${parsed.totals.fail} FAIL \xB7 ${parsed.totals.manual} manual \xB7 ${parsed.totals.pass} PASS` },

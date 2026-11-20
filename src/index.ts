@@ -37,6 +37,7 @@ import { dbAdvisory, parseDbCollected } from "./db.js";
 import { adAdvisory, parseAdCollected } from "./ad.js";
 import { k8sAdvisory, parseKubeBench } from "./k8s.js";
 import { cloudAdvisory, parseProwler } from "./cloud.js";
+import { ociAdvisory, parseOciCis } from "./oci.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -601,20 +602,30 @@ server.registerTool(
   {
     title: "Postura de nube (Prowler)",
     description:
-      "Evalúa la postura de seguridad de una suscripción de nube con Prowler (CIS y otros marcos), con una identidad de SOLO LECTURA. No se conecta ni instala nada: en modo advisory entrega cómo correr Prowler contra Azure (roles Reader + Security Reader) con salida JSON OCSF, y con collected_file parsea ese JSON a hallazgos. Respeta la severidad que asigna Prowler por check; agrupa por control y lista los recursos afectados. Primer proveedor: Azure.",
+      "Evalúa la postura de seguridad de una nube con una identidad de SOLO LECTURA. No se conecta ni instala nada: en modo advisory entrega cómo correr la herramienta y con collected_file parsea su salida. Azure (y en el futuro AWS/GCP) con Prowler (salida JSON OCSF, respeta su severidad y agrupa por control). Oracle Cloud (OCI) con el script CIS oficial (cis_reports.py, salida CSV), porque Prowler no cubre OCI.",
     inputSchema: {
-      provider: z.enum(["azure"]).describe("Proveedor de nube (por ahora azure)"),
-      collected_file: z.string().optional().describe("Archivo JSON OCSF de Prowler (prowler azure --output-formats json-ocsf)"),
-      target: z.string().optional().describe("Nombre/ID de la suscripción para el inventario (si el JSON no lo trae)"),
+      provider: z.enum(["azure", "oci"]).describe("Proveedor: azure (Prowler) u oci (script CIS de Oracle)"),
+      collected_file: z.string().optional().describe("Salida de la herramienta: JSON OCSF de Prowler (azure) o cis_summary_report.csv (oci)"),
+      target: z.string().optional().describe("Nombre/ID de la suscripción o tenancy para el inventario"),
     },
     annotations: { readOnlyHint: true },
   },
   async (a) => {
     try {
-      if (!a.collected_file) return text(cloudAdvisory(a.provider, a.target));
+      if (!a.collected_file) return text(a.provider === "oci" ? ociAdvisory(a.target) : cloudAdvisory(a.provider, a.target));
       const file = path.resolve(a.collected_file);
       if (!fs.existsSync(file)) return fail(`No existe ${file}`);
-      const parsed = parseProwler(a.provider, fs.readFileSync(file, "utf8"), a.target?.trim() || "suscripción");
+      const body = fs.readFileSync(file, "utf8");
+      if (a.provider === "oci") {
+        const parsed = parseOciCis(body, a.target?.trim() || "tenancy");
+        const { meta } = newRun("cloud", parsed.tenancy, { provider: "oci", source: file, nonCompliant: parsed.nonCompliant, total: parsed.total });
+        const o: Outcome = {
+          run: { tool: "oci-cis", status: "ok", count: parsed.findings.length, message: `oci: ${parsed.nonCompliant} no conformes de ${parsed.total} recomendaciones` },
+          findings: parsed.findings,
+        };
+        return text(await finishRun(meta, [o], null));
+      }
+      const parsed = parseProwler(a.provider, body, a.target?.trim() || "suscripción");
       const { meta } = newRun("cloud", parsed.account, { provider: a.provider, source: file, totals: parsed.totals });
       const o: Outcome = {
         run: { tool: "prowler", status: "ok", count: parsed.findings.length, message: `${a.provider}: ${parsed.totals.fail} FAIL · ${parsed.totals.manual} manual · ${parsed.totals.pass} PASS` },

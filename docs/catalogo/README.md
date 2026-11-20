@@ -36,7 +36,7 @@ activan solas cuando pides algo de su área, o puedes invocarlas por nombre.
 | `appsec-database` | Configuración de bases de datos (PostgreSQL, MySQL): cifrado, auth, roles | 🌓 usuario de lectura | Tier 1 | capaz |
 | `appsec-ad` | Postura de Active Directory: política, privilegios, Kerberos, delegación | 🌓 usuario de lectura del dominio | Tier 1 | capaz |
 | `appsec-k8s` | Postura de Kubernetes (CIS / kube-bench): kubelet, RBAC, políticas | 🌓 lectura del clúster | Tier 1 | capaz |
-| `appsec-cloud` | Postura de nube con Prowler (Azure): IAM, almacenamiento, red, Key Vault | 🌓 identidad de solo lectura | Tier 1 | capaz |
+| `appsec-cloud` | Postura de nube: Azure (Prowler) y Oracle OCI (CIS): IAM, red, almacenamiento | 🌓 identidad de solo lectura | Tier 1 | capaz |
 | `appsec-triage` | Clasificar hallazgos con memoria entre corridas | transversal | — | capaz |
 | `appsec-fix` | Remediación guiada y verificación por diferencia | transversal | — | capaz |
 | `appsec-inventory` | Explorar sistemas y armar el ecosistema (tool `inventory`) | transversal | — | ligero |
