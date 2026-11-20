@@ -57,7 +57,7 @@ El catálogo de skills por dominio y nivel de acceso vive en [`docs/catalogo/`](
 
 ---
 
-## 🧩 Inteligencia transversal (Fase 1.5) — sirve a las dos vías
+## 🧩 Inteligencia transversal (Fase 1.5) ✅ completada — sirve a las dos vías
 
 Lo más barato y lo que más valor agrega: todo lo que ya se escanea gana contexto. No toca sistemas.
 
@@ -74,7 +74,7 @@ Lo más barato y lo que más valor agrega: todo lo que ya se escanea gana contex
 | **Plan de compromiso** | ✅ | Tool `engagement` + skill `appsec-engagement`: registra el marco de la vía roja (autorización, referencia, vigencia, ventanas, exclusiones, Tier por defecto) sobre `dast_scope`; `status` evalúa si la autorización está vigente; `export` escribe el documento de reglas de enfrentamiento en Markdown (plantilla firmable) con las reglas duras del candado siempre incluidas. Viaja en el `handoff`. Materializa el candado de la vía roja. |
 | **Frontera de salida no confiable** | ✅ | `src/untrusted.ts`: el contenido derivado del objetivo/artefacto (código fuente, evidencia, banners, títulos) se envuelve entre marcas con un **nonce único por proceso**, con una nota que indica al modelo tratarlo como **datos, no instrucciones**. El contenido se neutraliza para que no pueda falsificar la marca de cierre. Aplicado en `finding_get`, `findings_query`, `inventory`, `revalidate` y el resumen de cada escaneo. Endurecimiento anti-inyección de prompt. *(Idea rescatada de ARTEX, reimplementada.)* |
 | **Migraciones de esquema** | ✅ | Versión del esquema en la BD (`PRAGMA user_version` en SQLite, campo en el JSON de respaldo) y migraciones idempotentes: una BD nueva pasa por todas, una antigua solo por las que le faltan, sin perder datos. v2 añade `risk_score` por hallazgo (prioridad recordada entre corridas, ordena el inventario). Visible en `inventory view=summary` («esquema v2»). |
-| **Modelo por skill** | 🧩 pend. | Pista `model:` en skills que solo asesoran, para usar uno barato o local. |
+| **Modelo por skill** | ✅ | Pista `model:` en el encabezado de cada skill: `ligero` (`haiku`, o local vía `ANTHROPIC_BASE_URL`) para las que solo leen/ordenan/rellenan plantillas (`appsec-inventory`, `appsec-plan`, `appsec-engagement`); `capaz` (predeterminado) para las que razonan sobre código (`appsec-audit`, `appsec-triage`, `appsec-fix`…). El trabajo pesado lo hacen los motores, no el modelo. Convención documentada en el catálogo. |
 
 ---
 

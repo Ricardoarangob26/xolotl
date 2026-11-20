@@ -1,7 +1,11 @@
 ---
 name: appsec-engagement
 description: Definir y consultar el plan de compromiso (reglas de enfrentamiento) de la vía roja de Xolotl con el tool engagement. Úsala cuando vayan a validar ofensivamente infraestructura PROPIA y haya que fijar antes la autorización, el alcance, las ventanas y las reglas; cuando pidan "reglas de enfrentamiento", "ROE", "autorización para pentest", "plan de compromiso" o un documento firmable de alcance; o para comprobar si la autorización está vigente antes de actuar. Materializa el candado de la vía roja. No ejecuta nada. Nivel de acceso: gobernanza (transversal a la vía roja).
+model: haiku
 ---
+
+<!-- model: asesoría ligera (rellena y consulta una plantilla de gobernanza; no razona sobre
+     código). Un modelo barato o local basta. Ver "Modelo por skill" en docs/catalogo/README.md. -->
 
 # Plan de compromiso (reglas de enfrentamiento)
 

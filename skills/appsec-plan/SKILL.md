@@ -1,7 +1,11 @@
 ---
 name: appsec-plan
 description: Armar el plan de evaluación de un sistema o de todo el ecosistema con el MCP Xolotl, usando los tools eval_plan e inventory view=next. Úsala cuando pidan "qué pruebas le puedo hacer a esto", "por dónde empiezo", "un plan de auditoría", "qué me falta evaluar", o cuando haya que ordenar y encadenar los escaneos por activo respetando el nivel de acceso y los niveles de ejecución (Tier 1/Tier 2). Decide el orden; no ejecuta. Nivel de acceso: transversal (lee el inventario y recomienda).
+model: haiku
 ---
+
+<!-- model: asesoría ligera (orquesta y ordena los pasos que ya calcula el motor; no razona sobre
+     código). Un modelo barato o local basta. Ver "Modelo por skill" en docs/catalogo/README.md. -->
 
 # Plan de evaluación por activo
 

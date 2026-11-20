@@ -27,17 +27,31 @@ corre siempre en local, así que no distingue niveles.
 Cada skill de Claude Code guía un dominio y declara su nivel de acceso y de ejecución. Se
 activan solas cuando pides algo de su área, o puedes invocarlas por nombre.
 
-| Skill | Dominio | Nivel de acceso | Ejecución |
-|---|---|---|---|
-| `appsec-network` | Reconocimiento de red (puertos, TLS, servicios) | 🌑 sin acceso | Tier 1 / Tier 2 |
-| `appsec-dast` | Prueba dinámica de apps/APIs (Nuclei) | 🌑 sin acceso | Tier 1 / Tier 2 |
-| `appsec-audit` | Auditoría de código: SAST, SCA, secretos, IaC | 📄 código fuente | local |
-| `appsec-hosts` | Servidores Linux: CVE de paquetes y endurecimiento | 🌓 lectura / 🌕 credenciales | Tier 1 / Tier 2 |
-| `appsec-triage` | Clasificar hallazgos con memoria entre corridas | transversal | — |
-| `appsec-fix` | Remediación guiada y verificación por diferencia | transversal | — |
-| `appsec-inventory` | Explorar sistemas y armar el ecosistema (tool `inventory`) | transversal | — |
-| `appsec-plan` | Plan de evaluación por activo: qué evaluar y en qué orden (tools `eval_plan`, `inventory view=next`) | transversal | — |
-| `appsec-engagement` | Plan de compromiso y reglas de enfrentamiento de la vía roja (tool `engagement`) | gobernanza (vía roja) | — |
+| Skill | Dominio | Nivel de acceso | Ejecución | Modelo |
+|---|---|---|---|---|
+| `appsec-network` | Reconocimiento de red (puertos, TLS, servicios) | 🌑 sin acceso | Tier 1 / Tier 2 | capaz |
+| `appsec-dast` | Prueba dinámica de apps/APIs (Nuclei) | 🌑 sin acceso | Tier 1 / Tier 2 | capaz |
+| `appsec-audit` | Auditoría de código: SAST, SCA, secretos, IaC | 📄 código fuente | local | capaz |
+| `appsec-hosts` | Servidores Linux: CVE de paquetes y endurecimiento | 🌓 lectura / 🌕 credenciales | Tier 1 / Tier 2 | capaz |
+| `appsec-triage` | Clasificar hallazgos con memoria entre corridas | transversal | — | capaz |
+| `appsec-fix` | Remediación guiada y verificación por diferencia | transversal | — | capaz |
+| `appsec-inventory` | Explorar sistemas y armar el ecosistema (tool `inventory`) | transversal | — | ligero |
+| `appsec-plan` | Plan de evaluación por activo: qué evaluar y en qué orden (tools `eval_plan`, `inventory view=next`) | transversal | — | ligero |
+| `appsec-engagement` | Plan de compromiso y reglas de enfrentamiento de la vía roja (tool `engagement`) | gobernanza (vía roja) | — | ligero |
+
+### Modelo por skill
+
+Cada skill declara en su encabezado una pista `model:` según cuánto razonamiento necesita, para
+no gastar un modelo caro donde no hace falta (al estilo del `-Lite` de los catálogos de agentes):
+
+- **ligero** (`model: haiku`) — solo lee, resume, ordena o rellena plantillas con lo que el motor
+  ya calculó; no interpreta código. Un modelo barato o **local** (vía `ANTHROPIC_BASE_URL`) basta.
+- **capaz** (sin pista, usa el predeterminado) — razona sobre código y evidencia: decide si un
+  hallazgo es explotable, escribe un parche, interpreta resultados. Conviene el modelo capaz.
+
+Es una pista; el cliente MCP elige el modelo. El trabajo pesado (escaneo, correlación, puntuación)
+lo hacen los motores deterministas, no el modelo, así que las skills ligeras rinden igual con uno
+barato.
 
 ## Leyenda de estado
 

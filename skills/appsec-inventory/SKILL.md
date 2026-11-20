@@ -1,7 +1,11 @@
 ---
 name: appsec-inventory
 description: Explorar sistemas y construir un inventario de seguridad vivo con el MCP Xolotl, usando el tool inventory. Úsala cuando pidan un panorama del ecosistema, saber qué activos y hallazgos hay acumulados, qué cambió entre escaneos (nuevo, persistente o desaparecido), rastrear un hallazgo en el tiempo, o ir mapeando varios sistemas en varias sesiones. La memoria larga de Xolotl, aparte del triage. Nivel de acceso: transversal (lee lo ya escaneado).
+model: haiku
 ---
+
+<!-- model: asesoría ligera (solo lee y resume el inventario; no razona sobre código). Un modelo
+     barato o local (ANTHROPIC_BASE_URL) basta. Ver "Modelo por skill" en docs/catalogo/README.md. -->
 
 # Inventario y ecosistema
 
