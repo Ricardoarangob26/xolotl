@@ -1,6 +1,6 @@
 ---
 name: appsec-database
-description: Auditar la configuración de seguridad de una base de datos con el MCP Xolotl, usando el tool scan_db y una cuenta de SOLO LECTURA. Úsala cuando pidan revisar o endurecer una base de datos, auditar su configuración, cifrado, autenticación, roles/privilegios o exposición de red, o comparar su configuración con buenas prácticas. Sin conexión propia: entrega consultas de solo lectura para correrlas a mano y parsea la salida. Primer motor: PostgreSQL. Nivel de acceso: usuario de lectura.
+description: Auditar la configuración de seguridad de una base de datos con el MCP Xolotl, usando el tool scan_db y una cuenta de SOLO LECTURA. Úsala cuando pidan revisar o endurecer una base de datos, auditar su configuración, cifrado, autenticación, roles/privilegios o exposición de red, o comparar su configuración con buenas prácticas. Sin conexión propia: entrega consultas de solo lectura para correrlas a mano y parsea la salida. Motores: PostgreSQL y MySQL/MariaDB. Nivel de acceso: usuario de lectura.
 ---
 
 # Auditoría de configuración de bases de datos
@@ -13,7 +13,8 @@ cuenta de lectura, y parsea la salida a hallazgos de configuración.
 ## Motores
 
 - **PostgreSQL** — disponible.
-- MySQL y SQL Server — en la hoja de ruta (mismo armazón).
+- **MySQL / MariaDB** — disponible.
+- SQL Server — en la hoja de ruta (mismo armazón).
 
 ## El flujo (Tier 1, tu MobaXterm)
 
@@ -32,6 +33,20 @@ cuenta de lectura, y parsea la salida a hallazgos de configuración.
 | Exposición de red | `listen_addresses='*'` (medio); reglas pg_hba con origen `0.0.0.0/0` (alto) |
 | Privilegios | superusuarios además de `postgres` (medio) |
 | Auditoría | sin `log_connections`/`log_disconnections` (bajo); sin pgaudit y `log_statement` limitado (bajo) |
+
+## Qué comprueba (MySQL / MariaDB)
+
+| Área | Hallazgos |
+|---|---|
+| Cifrado en tránsito | `require_secure_transport=OFF` (alto); `tls_version` con TLS 1.0/1.1 (medio) |
+| Autenticación | cuentas sin contraseña (**crítico**), anónimas (alto); plugin por defecto `mysql_native_password` (medio); cuentas con hash débil (bajo) |
+| Archivos | `local_infile=ON` (medio); `secure_file_priv` vacío (alto) |
+| Exposición de red | cuentas con `Host='%'` (medio) |
+| Privilegios | cuentas con `SUPER`/`GRANT` fuera de las de sistema (medio) |
+| Auditoría | sin `validate_password` (bajo); `general_log=ON` (bajo) |
+
+En MariaDB, cambia `performance_schema.global_variables` por `information_schema.global_variables`
+en el script (lo indica el modo advisory).
 
 ## Relación con el resto
 

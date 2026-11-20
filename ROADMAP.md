@@ -93,7 +93,7 @@ que tú entregas; lo que toca un sistema vivo respeta Tier 1/Tier 2 y el alcance
 | Kubernetes: postura | kube-bench (CIS) + Kubescape (NSA/MITRE) | Usuario de lectura (kubeconfig RO) |
 | Windows Server | Inventario por WinRM + HardeningKitty | Credenciales |
 | Directorio Activo: postura | LDAP de solo lectura: política de contraseñas vs NIST 800-63B, cuentas privilegiadas, delegaciones, ACL riesgosas, cuentas inactivas (al estilo PingCastle) | Usuario de lectura del dominio |
-| Bases de datos: configuración | ✅ **PostgreSQL** (`scan_db`): cifrado (TLS), pg_hba (trust/password/origen), hashing, superusuarios, auditoría — con cuenta RO, Tier 1. Pendiente: MySQL y SQL Server (mismo armazón) | Usuario de lectura |
+| Bases de datos: configuración | ✅ **PostgreSQL y MySQL/MariaDB** (`scan_db`): cifrado (TLS), autenticación (pg_hba / cuentas sin contraseña, anónimas, plugin débil), exposición de red, cuentas privilegiadas y auditoría — con cuenta RO, Tier 1. Pendiente: SQL Server (mismo armazón) | Usuario de lectura |
 | Monitoreo continuo | API de Wazuh (vulnerabilidades + CIS) | Usuario de lectura |
 | **Hardening de Linux (del diplomado)** | Guías de endurecimiento accionables sobre los hallazgos de `scan_host`: SSH, kernel, SELinux/AppArmor, auditd, firewall, montajes | Usuario de lectura / credenciales |
 
@@ -201,7 +201,7 @@ referencia histórica.
 | Recon y web/API (`recon-advisor`, `web-hunter`, `api-security`, `bug-bounty`) | 🟡 Nuclei | 🔵 Fase 3 |
 | Lógica de negocio (`bizlogic-hunter`) | ❌ | 🔵 lista guiada advisory (Fase 3) |
 | IA/LLM (`llm-redteam`, `ai-recon`) | ❌ | 🔵 evaluación de apps LLM propias (Fase 3) |
-| Base de datos (`database-attacker`) | ✅ `scan_db` (PostgreSQL) + 🟡 DAST genérico | 🔵 MySQL/MSSQL (Fase 2) |
+| Base de datos (`database-attacker`) | ✅ `scan_db` (PostgreSQL, MySQL) + 🟡 DAST genérico | 🔵 SQL Server (Fase 2) |
 | Tráfico, IR, malware, reversa | ❌ | 🔵 Fase 4 (offline) |
 | Móvil, firmware, OT | ❌ | 🔵 análisis estático/pasivo (Fase 4) |
 | Detección y amenazas (`detection-engineer`, `threat-modeler`) | ❌ | 🟣 Fase 4 + bucle púrpura |

@@ -40404,7 +40404,34 @@ var PG_COLLECTOR = [
   "\\echo ===XOLOTL hba===",
   "SELECT COALESCE(type,'')||'|'||COALESCE(array_to_string(database,','),'')||'|'||COALESCE(array_to_string(user_name,','),'')||'|'||COALESCE(address,'')||'|'||COALESCE(auth_method,'') FROM pg_hba_file_rules ORDER BY line_number;"
 ].join("\n");
+var MYSQL_COLLECTOR = [
+  "SELECT '===XOLOTL meta===';",
+  "SELECT CONCAT('version|', VERSION());",
+  "SELECT '===XOLOTL settings===';",
+  "SELECT CONCAT(VARIABLE_NAME,'|',VARIABLE_VALUE) FROM performance_schema.global_variables WHERE VARIABLE_NAME IN ('require_secure_transport','have_ssl','tls_version','local_infile','secure_file_priv','default_authentication_plugin','general_log','skip_name_resolve','validate_password.policy');",
+  "SELECT '===XOLOTL users===';",
+  "SELECT CONCAT(User,'|',Host,'|',IF(authentication_string='' OR authentication_string IS NULL,'EMPTY','set'),'|',COALESCE(plugin,''),'|',Super_priv,'|',Grant_priv) FROM mysql.user;"
+].join("\n");
+function mysqlAdvisory(target) {
+  const where2 = target ? `la base ${target}` : "la base MySQL/MariaDB";
+  return [
+    `## Tier 1 \xB7 advisory \u2014 auditor\xEDa de configuraci\xF3n de ${where2} (solo lectura)`,
+    "Ninguna consulta cambia datos. Una cuenta de lectura con SELECT sobre mysql.user y acceso a las",
+    "variables globales basta (en MariaDB usa information_schema.global_variables en vez de performance_schema).",
+    "",
+    "1. Guarda este script como mysql-collect.sql:",
+    "",
+    MYSQL_COLLECTOR,
+    "",
+    "2. Ejec\xFAtalo sin encabezados y vuelca la salida a un archivo:",
+    "     mysql -N -s -h <host> -u <usuario_lectura> -p <base> < mysql-collect.sql > mysql-audit.txt",
+    "   (si no tienes SELECT sobre mysql.user, esa secci\xF3n vendr\xE1 vac\xEDa y el resto igual se audita.)",
+    "",
+    "3. Volver: scan_db con engine=mysql y collected_file=<ruta de mysql-audit.txt>."
+  ].join("\n");
+}
 function dbAdvisory(engine, target) {
+  if (engine === "mysql") return mysqlAdvisory(target);
   const where2 = target ? `la base ${target}` : "la base PostgreSQL";
   return [
     `## Tier 1 \xB7 advisory \u2014 auditor\xEDa de configuraci\xF3n de ${where2} (solo lectura)`,
@@ -40476,11 +40503,52 @@ function pgChecks(sec, host) {
     add("XOL-PG-AUDIT", "low", "Auditor\xEDa de sentencias limitada en PostgreSQL", "Sin pgaudit y con log_statement distinto de ddl/all no hay traza de las operaciones sensibles sobre los datos.", "Cargar pgaudit (shared_preload_libraries) y configurar su pol\xEDtica, o al menos log_statement='ddl'.", `shared_preload_libraries=${settings.shared_preload_libraries ?? "(vac\xEDo)"} log_statement=${settings.log_statement ?? "?"}`);
   return { findings: out, version: version2 };
 }
+var SYSTEM_MYSQL_USERS = /* @__PURE__ */ new Set(["root", "mysql.sys", "mysql.session", "mysql.infoschema", "mariadb.sys", "debian-sys-maint"]);
+function mysqlChecks(sec, host) {
+  const settings = {};
+  for (const l of sec.settings ?? []) {
+    const i = l.indexOf("|");
+    if (i > 0) settings[l.slice(0, i).toLowerCase()] = l.slice(i + 1).trim();
+  }
+  const version2 = (sec.meta ?? []).map((l) => l.split("|").slice(1).join("|")).find(Boolean);
+  const users = (sec.users ?? []).map((l) => l.split("|")).filter((p) => p.length >= 6).map((p) => ({ user: p[0], host: p[1], auth: p[2], plugin: p[3].toLowerCase(), super: p[4] === "Y", grant: p[5] === "Y" }));
+  const out = [];
+  const add = (rule, severity, title, description, remediation, evidence) => out.push({ tool: "db-audit", category: "config", severity, ruleId: rule, title, description, remediation, evidence, location: { target: host } });
+  const s = (k) => (settings[k] ?? "").toLowerCase();
+  const has = (k) => k in settings;
+  if (has("require_secure_transport") && s("require_secure_transport") === "off")
+    add("XOL-MY-TLS", "high", "MySQL no exige TLS en las conexiones", "Con require_secure_transport=OFF se aceptan conexiones sin cifrar: credenciales y datos viajan en claro.", "require_secure_transport=ON y configurar certificados TLS del servidor.", "require_secure_transport=OFF");
+  if (/tlsv1($|,|\.1)/.test(s("tls_version")))
+    add("XOL-MY-TLSVER", "medium", `MySQL permite versiones TLS obsoletas (${settings.tls_version})`, "TLS 1.0/1.1 tienen debilidades conocidas.", "tls_version='TLSv1.2,TLSv1.3'.", `tls_version=${settings.tls_version}`);
+  if (s("local_infile") === "on")
+    add("XOL-MY-LOCALINFILE", "medium", "LOAD DATA LOCAL INFILE habilitado en MySQL", "Con local_infile=ON un servidor o una inyecci\xF3n pueden hacer que el cliente lea archivos locales y los env\xEDe.", "local_infile=OFF salvo que una carga concreta lo requiera.", "local_infile=ON");
+  if (has("secure_file_priv") && settings.secure_file_priv === "")
+    add("XOL-MY-FILEPRIV", "high", "secure_file_priv sin restricci\xF3n en MySQL", "Vac\xEDo permite LOAD_FILE e INTO OUTFILE sobre cualquier ruta: un usuario con FILE puede leer o escribir archivos del servidor.", "Fijar secure_file_priv a una carpeta dedicada, o a NULL para deshabilitar la importaci\xF3n/exportaci\xF3n por archivo.", "secure_file_priv= (vac\xEDo)");
+  if (s("default_authentication_plugin") === "mysql_native_password")
+    add("XOL-MY-AUTHPLUGIN", "medium", "Plugin de autenticaci\xF3n d\xE9bil por defecto en MySQL", "mysql_native_password usa un hash SHA-1 simple; caching_sha2_password es m\xE1s fuerte y es el est\xE1ndar en MySQL 8.", "default_authentication_plugin=caching_sha2_password y migrar las cuentas.", "default_authentication_plugin=mysql_native_password");
+  if (!has("validate_password.policy"))
+    add("XOL-MY-PWPOLICY", "low", "Sin validaci\xF3n de complejidad de contrase\xF1as en MySQL", "El componente validate_password no est\xE1 activo: se pueden fijar contrase\xF1as d\xE9biles.", "Instalar el componente validate_password y fijar una pol\xEDtica (LENGTH/MIXED/number/special).", "validate_password no instalado");
+  if (s("general_log") === "on")
+    add("XOL-MY-GENLOG", "low", "general_log activo en MySQL", "El log general registra todas las sentencias en claro (incluidas las que llevan datos sensibles) y degrada el rendimiento; no es auditor\xEDa de seguridad.", "Desactivar general_log en producci\xF3n; para auditor\xEDa usar el audit log plugin.", "general_log=ON");
+  if (users.length) {
+    const noPass = users.filter((u) => u.auth === "EMPTY" && u.user !== "" && !SYSTEM_MYSQL_USERS.has(u.user.toLowerCase()));
+    if (noPass.length) add("XOL-MY-NOPASS", "critical", `Cuentas MySQL sin contrase\xF1a (${noPass.length})`, "Una cuenta sin contrase\xF1a permite entrar sin credenciales por cualquier host que la regla permita.", "Fijar contrase\xF1a (ALTER USER \u2026 IDENTIFIED BY \u2026) o eliminar la cuenta.", noPass.map((u) => `${u.user}@${u.host}`).join("\n"));
+    const anon = users.filter((u) => u.user === "");
+    if (anon.length) add("XOL-MY-ANON", "high", "Cuentas an\xF3nimas en MySQL", "Las cuentas an\xF3nimas (User vac\xEDo) permiten conexiones sin usuario nombrado y complican la trazabilidad.", "DROP USER ''@'host' para todas las cuentas an\xF3nimas.", anon.map((u) => `''@${u.host}`).join("\n"));
+    const anyHost = users.filter((u) => u.host === "%" && !SYSTEM_MYSQL_USERS.has(u.user.toLowerCase()) && u.user !== "");
+    if (anyHost.length) add("XOL-MY-ANYHOST", "medium", `Cuentas MySQL accesibles desde cualquier host (${anyHost.length})`, "Con Host='%' la cuenta acepta conexiones desde cualquier IP; reduce el control a la sola contrase\xF1a.", "Restringir el Host a las redes/hosts que de verdad se conectan.", anyHost.map((u) => `${u.user}@%`).join(", "));
+    const supers = users.filter((u) => (u.super || u.grant) && !SYSTEM_MYSQL_USERS.has(u.user.toLowerCase()));
+    if (supers.length) add("XOL-MY-SUPER", "medium", `Cuentas MySQL con privilegios de administraci\xF3n (${supers.length})`, "SUPER o GRANT OPTION fuera de las cuentas de sistema rompen el menor privilegio y son objetivos de alto valor.", "Dar a las aplicaciones solo los privilegios que usan; reservar SUPER/GRANT a la administraci\xF3n.", supers.map((u) => `${u.user}@${u.host}${u.super ? " SUPER" : ""}${u.grant ? " GRANT" : ""}`).join("\n"));
+    const weakPlugin = users.filter((u) => u.plugin === "mysql_native_password" && !SYSTEM_MYSQL_USERS.has(u.user.toLowerCase()));
+    if (weakPlugin.length) add("XOL-MY-WEAKPLUGIN", "low", `Cuentas MySQL con hashing de contrase\xF1a d\xE9bil (${weakPlugin.length})`, "mysql_native_password usa SHA-1; caching_sha2_password es m\xE1s resistente.", "Migrar las cuentas a caching_sha2_password (ALTER USER \u2026 IDENTIFIED WITH caching_sha2_password).", weakPlugin.map((u) => `${u.user}@${u.host}`).join(", "));
+  }
+  return { findings: out, version: version2 };
+}
 function parseDbCollected(engine, text2, host = "base-de-datos") {
-  if (!/===XOLOTL (meta|settings|roles|hba)===/.test(text2))
-    throw new Error("La salida no trae las marcas ===XOLOTL \u2026===. Genera el archivo con el script que da scan_db en modo advisory (psql -A -t -f pg-collect.sql).");
+  if (!/===XOLOTL (meta|settings|roles|hba|users)===/.test(text2))
+    throw new Error("La salida no trae las marcas ===XOLOTL \u2026===. Genera el archivo con el script que da scan_db en modo advisory.");
   const sec = sections(text2);
-  const { findings, version: version2 } = pgChecks(sec, host);
+  const { findings, version: version2 } = engine === "mysql" ? mysqlChecks(sec, host) : pgChecks(sec, host);
   return { findings, version: version2, host };
 }
 
@@ -41204,10 +41272,10 @@ server.registerTool(
   "scan_db",
   {
     title: "Auditor\xEDa de configuraci\xF3n de base de datos",
-    description: "Audita la configuraci\xF3n de seguridad de una base de datos con una cuenta de SOLO LECTURA: cifrado en tr\xE1nsito (TLS), autenticaci\xF3n (pg_hba, hashing), exposici\xF3n de red, superusuarios y auditor\xEDa. No se conecta ni instala nada: en modo advisory entrega el script SQL de solo lectura para correrlo a mano (flujo MobaXterm) y con collected_file parsea la salida. Primer motor: PostgreSQL.",
+    description: "Audita la configuraci\xF3n de seguridad de una base de datos con una cuenta de SOLO LECTURA: cifrado en tr\xE1nsito (TLS), autenticaci\xF3n, exposici\xF3n de red, cuentas privilegiadas y auditor\xEDa. No se conecta ni instala nada: en modo advisory entrega el script SQL de solo lectura para correrlo a mano (flujo MobaXterm) y con collected_file parsea la salida. Motores: PostgreSQL y MySQL/MariaDB.",
     inputSchema: {
-      engine: external_exports.enum(["postgresql"]).describe("Motor de base de datos (por ahora postgresql)"),
-      collected_file: external_exports.string().optional().describe("Archivo con la salida del script SQL de solo lectura (psql -A -t -f pg-collect.sql)"),
+      engine: external_exports.enum(["postgresql", "mysql"]).describe("Motor de base de datos: postgresql o mysql (incluye MariaDB)"),
+      collected_file: external_exports.string().optional().describe("Archivo con la salida del script SQL de solo lectura que da el modo advisory"),
       target: external_exports.string().optional().describe("Etiqueta del servidor/base para el inventario (host o nombre)")
     },
     annotations: { readOnlyHint: true }
