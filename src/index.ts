@@ -5,7 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { resolveTool, SPECS, TOOL_IDS, ToolId, toolVersion } from "./binaries.js";
 import { DEFAULT_EXCLUDES, ensureDirs, HOME, minutes, SCOPE_FILE } from "./config.js";
-import { CATEGORIES, finalize, Finding, oneLine, readLines, RawFinding, SEVERITIES, sevRank, TRIAGE_STATUSES } from "./findings.js";
+import { CATEGORIES, finalize, Finding, oneLine, readLines, RawFinding, riskTag, SEVERITIES, sevRank, TRIAGE_STATUSES, where } from "./findings.js";
 import { installTool } from "./installer.js";
 import { toHtml, toMarkdown, toSarif } from "./report.js";
 import {
@@ -31,6 +31,7 @@ import { clearEngagement, engagementMarkdown, engagementStatus, loadEngagement, 
 import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage } from "./store.js";
 import { buildEvalPlan, findingHistory, inventorySummary, listAssets, queryFindings, suggestNextSteps } from "./inventory.js";
 import { confirmFinding, VERDICT_ES } from "./confirm.js";
+import { untrustedSection } from "./untrusted.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -80,7 +81,7 @@ function summaryText(meta: RunMeta, findings: Finding[], top = 15): string {
   const active = findings.filter((f) => !isSuppressed(f));
   if (active.length) {
     lines.push(`Principales (${Math.min(top, active.length)} de ${active.length}):`);
-    for (const f of active.slice(0, top)) lines.push(`  ${oneLine(f)}`);
+    lines.push(untrustedSection(active.slice(0, top).map((f) => `  ${oneLine(f)}`).join("\n"), "hallazgos"));
   }
   lines.push("Siguiente: findings_query para filtrar, finding_get para ver el detalle con código, report_generate para el informe.");
   return lines.join("\n");
@@ -691,7 +692,8 @@ server.registerTool(
       const off = a.offset ?? 0;
       const page = list.slice(off, off + (a.limit ?? 50));
       const head = `Corrida ${meta.id}: ${list.length} hallazgos coinciden (mostrando ${page.length} desde ${off}).`;
-      return text([head, ...page.map(oneLine)].join("\n"));
+      if (!page.length) return text(head);
+      return text([head, untrustedSection(page.map(oneLine).join("\n"), "hallazgos")].join("\n"));
     } catch (e) {
       return fail((e as Error).message);
     }
@@ -715,7 +717,9 @@ server.registerTool(
       const { meta, findings } = loadRun(a.run_id);
       const f = findings.find((x) => x.id.toLowerCase() === a.finding_id.toLowerCase());
       if (!f) return fail(`No existe ${a.finding_id} en ${meta.id}.`);
-      const out: string[] = [oneLine(f), "", JSON.stringify({ ...f, snippet: undefined }, null, 2)];
+      // Cabecera de confianza (datos nuestros): no incluye texto libre del artefacto.
+      const header = `Detalle de ${f.id} · ${f.severity} · ${f.category}${riskTag(f)} · ${where(f)} [${f.tools.join(", ")}]`;
+      const body: string[] = [oneLine(f), "", JSON.stringify({ ...f, snippet: undefined }, null, 2)];
       const root = meta.kind === "static" || meta.kind === "codeql" || meta.kind === "iac" ? meta.target : null;
       const loc = f.location;
       if (root && loc?.file && loc.startLine && f.category !== "secret") {
@@ -731,10 +735,11 @@ server.registerTool(
               return `${mark}${String(ln).padStart(5)} | ${l}`;
             })
             .join("\n");
-          out.push("", `Código (${path.join(root, loc.file)}):`, numbered);
+          body.push("", `Código (${path.join(root, loc.file)}):`, numbered);
         }
       }
-      return text(out.join("\n"));
+      // El detalle (evidencia, descripción y código del artefacto) va tras la frontera no confiable.
+      return text([header, "", untrustedSection(body.join("\n"), f.id)].join("\n"));
     } catch (e) {
       return fail((e as Error).message);
     }
@@ -844,7 +849,7 @@ server.registerTool(
         applied = `\n\nPara fijar estas decisiones usa apply_triage=true (o finding_triage a mano).`;
       }
       const head = `Revalidación de ${picked.length} hallazgo(s) de ${meta.id}: ${tally.confirmed} confirmado(s) · ${tally.not_present} resuelto(s) · ${tally.inconclusive} no concluyente(s).`;
-      return text([head, "", ...lines].join("\n") + applied);
+      return text([head, "", untrustedSection(lines.join("\n"), "revalidación")].join("\n") + applied);
     } catch (e) {
       return fail((e as Error).message);
     }
@@ -946,7 +951,7 @@ server.registerTool(
         const n = r.runs > 1 ? ` ×${r.runs}` : "";
         return `${r.severity} ${r.category}${pkg} — ${r.title}${cve} · ${r.asset} [${r.tool_used}] {${r.status}}${n} · ${r.fingerprint}`;
       });
-      return text([`${rows.length} hallazgo(s) en el inventario:`, ...out].join("\n"));
+      return text([`${rows.length} hallazgo(s) en el inventario:`, untrustedSection(out.join("\n"), "hallazgos")].join("\n"));
     } catch (e) {
       return fail((e as Error).message);
     }
