@@ -38,6 +38,7 @@ import { adAdvisory, parseAdCollected } from "./ad.js";
 import { k8sAdvisory, parseKubeBench } from "./k8s.js";
 import { cloudAdvisory, parseProwler } from "./cloud.js";
 import { ociAdvisory, parseOciCis } from "./oci.js";
+import { windowsAdvisory, parseWindowsCollected } from "./windows.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -670,6 +671,36 @@ server.registerTool(
       const { meta } = newRun("cloud", parsed.account, { provider: a.provider, source: file, totals: parsed.totals });
       const o: Outcome = {
         run: { tool: "prowler", status: "ok", count: parsed.findings.length, message: `${a.provider}: ${parsed.totals.fail} FAIL · ${parsed.totals.manual} manual · ${parsed.totals.pass} PASS` },
+        findings: parsed.findings,
+      };
+      return text(await finishRun(meta, [o], null));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "scan_windows",
+  {
+    title: "Postura de Windows Server",
+    description:
+      "Evalúa el endurecimiento de un servidor Windows con un recolector PowerShell de SOLO LECTURA (local o por WinRM): SMBv1, firma SMB, WDigest, UAC, LLMNR, Defender, firewall, RDP/NLA, cuenta Guest, administradores locales y PowerShell v2. No se conecta ni cambia nada: en modo advisory entrega el script para correrlo a mano (flujo MobaXterm/WinRM) y con collected_file parsea la salida.",
+    inputSchema: {
+      collected_file: z.string().optional().describe("Archivo con la salida del recolector PowerShell (win-collect.ps1)"),
+      target: z.string().optional().describe("Nombre del servidor para el inventario (si la salida no lo trae)"),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(windowsAdvisory(a.target));
+      const file = path.resolve(a.collected_file);
+      if (!fs.existsSync(file)) return fail(`No existe ${file}`);
+      const parsed = parseWindowsCollected(fs.readFileSync(file, "utf8"), a.target?.trim() || "servidor-windows");
+      const { meta } = newRun("windows", parsed.host, { source: file });
+      const o: Outcome = {
+        run: { tool: "win-audit", status: "ok", count: parsed.findings.length, message: `Windows · ${parsed.host}` },
         findings: parsed.findings,
       };
       return text(await finishRun(meta, [o], null));

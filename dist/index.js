@@ -37855,6 +37855,8 @@ var CATALOG = {
   T1040: { name: "Network Sniffing", tactic: "Acceso a credenciales" },
   T1557: { name: "Adversary-in-the-Middle", tactic: "Acceso a credenciales" },
   "T1021.004": { name: "Remote Services: SSH", tactic: "Movimiento lateral" },
+  T1003: { name: "OS Credential Dumping", tactic: "Acceso a credenciales" },
+  T1210: { name: "Exploitation of Remote Services", tactic: "Movimiento lateral" },
   T1046: { name: "Network Service Discovery", tactic: "Descubrimiento" },
   T1083: { name: "File and Directory Discovery", tactic: "Descubrimiento" },
   T1526: { name: "Cloud Service Discovery", tactic: "Descubrimiento" },
@@ -37887,6 +37889,9 @@ function byRuleId(ruleId) {
   if (r === "XOL-AD-KRBTGT") return ["T1558.001"];
   if (r === "XOL-AD-UNCONSTRAINED" || r === "XOL-AD-MAQ") return ["T1558"];
   if (r === "XOL-AD-REVERSIBLE") return ["T1552.001"];
+  if (r === "XOL-WIN-WDIGEST") return ["T1003"];
+  if (r === "XOL-WIN-SMB1") return ["T1210"];
+  if (r === "XOL-WIN-LLMNR") return ["T1557"];
   const exact = {
     "XOL-SSH-001": ["T1021.004", "T1110"],
     "XOL-SSH-002": ["T1110", "T1021.004"],
@@ -39710,9 +39715,9 @@ async function collectViaSsh(o, script) {
   return r.stdout;
 }
 async function scanHostText(dir, text2, ignoreUnfixed, timeoutMs) {
-  const sections3 = parseCollected(text2);
-  const info = hostInfo(sections3);
-  const checks = hardeningChecks(sections3, info);
+  const sections4 = parseCollected(text2);
+  const info = hostInfo(sections4);
+  const checks = hardeningChecks(sections4, info);
   const config2 = {
     run: { tool: "xolotl-host", status: "ok", count: checks.length, message: `${info.osName} \xB7 kernel ${info.kernel} \xB7 ${info.root ? "con root" : "sin root (parcial)"}` },
     findings: checksToFindings(checks, info)
@@ -39721,7 +39726,7 @@ async function scanHostText(dir, text2, ignoreUnfixed, timeoutMs) {
     fs10.writeFileSync(path9.join(dir, "host-collect.txt"), text2);
     return { info, outcomes: [config2, { run: { tool: "trivy", status: "skipped", message: `distribuci\xF3n no soportada para vulnerabilidades (${info.osId})` }, findings: [] }] };
   }
-  const sbomFile = writeArtifacts(dir, text2, buildSbom(sections3, info));
+  const sbomFile = writeArtifacts(dir, text2, buildSbom(sections4, info));
   const vulns = await guarded("trivy", async (t) => {
     const out = path9.join(dir, "trivy-host.json");
     const args = ["sbom", "--scanners", "vuln", "--format", "json", "--output", out, "--quiet", "--timeout", `${Math.round(timeoutMs / 6e4)}m`, ...ignoreUnfixed ? ["--ignore-unfixed"] : [], sbomFile];
@@ -40907,6 +40912,105 @@ function parseOciCis(csv, tenancy = "tenancy") {
   return { findings, tenancy, total, nonCompliant };
 }
 
+// src/windows.ts
+var WIN_COLLECTOR = [
+  "$os = Get-CimInstance Win32_OperatingSystem",
+  '"===XOLOTL meta==="',
+  '"hostname|$env:COMPUTERNAME"',
+  '"os|$($os.Caption) $($os.Version)"',
+  '"===XOLOTL settings==="',
+  "$smb = Get-SmbServerConfiguration",
+  '"smb1|$($smb.EnableSMB1Protocol)"',
+  '"smb_signing|$($smb.RequireSecuritySignature)"',
+  'try { "defender_rtp|$((Get-MpComputerStatus).RealTimeProtectionEnabled)" } catch { "defender_rtp|unknown" }',
+  'try { "defender_av|$((Get-MpComputerStatus).AntivirusEnabled)" } catch { "defender_av|unknown" }',
+  `"firewall_disabled|$(((Get-NetFirewallProfile) | Where-Object { -not $_.Enabled } | Select-Object -Expand Name) -join ',')"`,
+  `"uac|$((Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' -Name EnableLUA -EA SilentlyContinue).EnableLUA)"`,
+  `"wdigest|$((Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest' -Name UseLogonCredential -EA SilentlyContinue).UseLogonCredential)"`,
+  `"llmnr|$((Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient' -Name EnableMulticast -EA SilentlyContinue).EnableMulticast)"`,
+  `"rdp_denied|$((Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server' -Name fDenyTSConnections -EA SilentlyContinue).fDenyTSConnections)"`,
+  `"rdp_nla|$((Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' -Name UserAuthentication -EA SilentlyContinue).UserAuthentication)"`,
+  '"guest_enabled|$((Get-LocalUser -Name Guest -EA SilentlyContinue).Enabled)"',
+  '"local_admins|$(((Get-LocalGroupMember Administrators -EA SilentlyContinue)).Count)"',
+  '"ps2|$((Get-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2 -EA SilentlyContinue).State)"'
+].join("\r\n");
+function windowsAdvisory(target) {
+  return [
+    `## Tier 1 \xB7 advisory \u2014 postura de Windows Server${target ? ` (${target})` : ""} (solo lectura)`,
+    "El script solo consulta configuraci\xF3n (Get-*, registro en lectura): no cambia nada. Requiere",
+    "ejecutarse como administrador local para ver toda la configuraci\xF3n.",
+    "",
+    "En el servidor (local) o desde tu equipo por WinRM:",
+    "  - Local:  guarda el script como win-collect.ps1 y corre:",
+    "       powershell -ExecutionPolicy Bypass -File win-collect.ps1 | Out-File -Encoding utf8 win-audit.txt",
+    "  - Remoto por WinRM:",
+    "       Invoke-Command -ComputerName <host> -FilePath win-collect.ps1 | Out-File -Encoding utf8 win-audit.txt",
+    "",
+    "Script win-collect.ps1:",
+    "",
+    WIN_COLLECTOR,
+    "",
+    "Volver: scan_windows con collected_file=<ruta de win-audit.txt>."
+  ].join("\n");
+}
+function sections3(text2) {
+  const out = {};
+  let cur = "";
+  for (const raw of text2.split(/\r?\n/)) {
+    const m = raw.match(/^===XOLOTL (\w+)===/);
+    if (m) {
+      cur = m[1];
+      out[cur] = [];
+      continue;
+    }
+    if (cur && raw.trim()) out[cur].push(raw.trim());
+  }
+  return out;
+}
+function parseWindowsCollected(text2, fallbackHost = "servidor-windows") {
+  if (!/===XOLOTL (meta|settings)===/.test(text2))
+    throw new Error("La salida no trae las marcas ===XOLOTL \u2026===. Genera el archivo con el script que da scan_windows en modo advisory.");
+  const sec = sections3(text2);
+  const meta3 = {};
+  for (const l of sec.meta ?? []) {
+    const i = l.indexOf("|");
+    if (i > 0) meta3[l.slice(0, i)] = l.slice(i + 1).trim();
+  }
+  const s = {};
+  for (const l of sec.settings ?? []) {
+    const i = l.indexOf("|");
+    if (i > 0) s[l.slice(0, i).toLowerCase()] = l.slice(i + 1).trim();
+  }
+  const host = meta3.hostname || fallbackHost;
+  const out = [];
+  const add = (rule, severity, title, description, remediation, evidence) => out.push({ tool: "win-audit", category: "config", severity, ruleId: rule, title, description, remediation, evidence, location: { target: host } });
+  const isTrue = (v) => (v ?? "").toLowerCase() === "true";
+  if (isTrue(s.smb1))
+    add("XOL-WIN-SMB1", "high", "SMBv1 habilitado", "SMBv1 es obsoleto y vulnerable (EternalBlue/WannaCry). No deber\xEDa estar activo en ning\xFAn servidor moderno.", "Deshabilitar SMBv1: Set-SmbServerConfiguration -EnableSMB1Protocol $false y quitar la caracter\xEDstica SMB1.", "EnableSMB1Protocol=True");
+  if (s.smb_signing !== void 0 && !isTrue(s.smb_signing))
+    add("XOL-WIN-SMBSIGN", "medium", "Firma SMB no obligatoria", "Sin firma SMB obligatoria el tr\xE1fico es susceptible a retransmisi\xF3n (SMB relay) y manipulaci\xF3n.", "Exigir la firma: Set-SmbServerConfiguration -RequireSecuritySignature $true (y en GPO).", "RequireSecuritySignature=False");
+  if (s.wdigest === "1")
+    add("XOL-WIN-WDIGEST", "high", "WDigest guarda credenciales en memoria", "Con UseLogonCredential=1, las contrase\xF1as quedan en claro en la memoria de LSASS y se extraen con Mimikatz.", "Poner UseLogonCredential=0 en HKLM\\...\\WDigest (desactivado por defecto desde Windows 8.1/2012 R2).", "WDigest UseLogonCredential=1");
+  if (s.uac === "0")
+    add("XOL-WIN-UAC", "high", "UAC deshabilitado", "Con EnableLUA=0 no hay elevaci\xF3n: cualquier proceso corre con privilegios completos sin confirmaci\xF3n.", "Habilitar UAC (EnableLUA=1) y reiniciar.", "EnableLUA=0");
+  if (s.llmnr !== "0" && "llmnr" in s)
+    add("XOL-WIN-LLMNR", "medium", "LLMNR activo (resoluci\xF3n multicast de nombres)", "LLMNR permite a un atacante de la red responder consultas de nombres y capturar hashes NetNTLM (Responder).", "Deshabilitar LLMNR por GPO: 'Turn off multicast name resolution' (EnableMulticast=0).", `EnableMulticast=${s.llmnr || "(no configurado \u2192 activo)"}`);
+  if (isTrue(s.defender_rtp) === false && s.defender_rtp === "False")
+    add("XOL-WIN-DEFENDER", "high", "Protecci\xF3n en tiempo real de Defender desactivada", "Sin protecci\xF3n en tiempo real no se bloquea malware al ejecutarse.", "Habilitar la protecci\xF3n en tiempo real de Microsoft Defender (o del EDR corporativo si lo reemplaza).", "RealTimeProtectionEnabled=False");
+  if (s.firewall_disabled)
+    add("XOL-WIN-FIREWALL", "medium", `Perfiles de firewall deshabilitados: ${s.firewall_disabled}`, "Un perfil de firewall apagado deja los servicios del host expuestos en esa red.", "Habilitar los tres perfiles (Domain/Private/Public): Set-NetFirewallProfile -Enabled True.", `perfiles apagados: ${s.firewall_disabled}`);
+  if (s.rdp_denied === "0" && s.rdp_nla !== "1")
+    add("XOL-WIN-RDPNLA", "medium", "RDP habilitado sin Autenticaci\xF3n a Nivel de Red (NLA)", "Sin NLA, RDP acepta conexiones antes de autenticar, lo que ampl\xEDa la superficie y facilita la fuerza bruta.", "Exigir NLA (UserAuthentication=1) y limitar el acceso RDP por firewall a la red de administraci\xF3n.", "RDP-Tcp UserAuthentication!=1");
+  if (isTrue(s.guest_enabled))
+    add("XOL-WIN-GUEST", "high", "Cuenta Guest habilitada", "La cuenta de invitado permite acceso sin credenciales nominales y rompe la trazabilidad.", "Deshabilitar la cuenta Guest: Disable-LocalUser -Name Guest.", "Guest.Enabled=True");
+  const admins = Number(s.local_admins);
+  if (!Number.isNaN(admins) && admins > 3)
+    add("XOL-WIN-ADMINS", "low", `Muchos administradores locales (${admins})`, "Cuantos m\xE1s administradores locales, mayor superficie para el movimiento lateral si uno se compromete.", "Revisar el grupo Administradores; usar LAPS para la contrase\xF1a del admin local y menor privilegio.", `Administradores locales=${admins}`);
+  if ((s.ps2 ?? "").toLowerCase() === "enabled")
+    add("XOL-WIN-PS2", "medium", "PowerShell v2 instalado", "PowerShell v2 no tiene registro ni AMSI: se usa para evadir defensas ('downgrade attack').", "Quitar la caracter\xEDstica: Disable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2.", "MicrosoftWindowsPowerShellV2=Enabled");
+  return { findings: out, host };
+}
+
 // src/tier.ts
 var defaultMode = () => (process.env.XOLOTL_MODE ?? "").trim().toLowerCase() === "advisory" ? "advisory" : "execute";
 var resolveMode = (requested) => requested ?? defaultMode();
@@ -41776,6 +41880,34 @@ server.registerTool(
       const { meta: meta3 } = newRun("cloud", parsed.account, { provider: a.provider, source: file2, totals: parsed.totals });
       const o = {
         run: { tool: "prowler", status: "ok", count: parsed.findings.length, message: `${a.provider}: ${parsed.totals.fail} FAIL \xB7 ${parsed.totals.manual} manual \xB7 ${parsed.totals.pass} PASS` },
+        findings: parsed.findings
+      };
+      return text(await finishRun(meta3, [o], null));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
+  "scan_windows",
+  {
+    title: "Postura de Windows Server",
+    description: "Eval\xFAa el endurecimiento de un servidor Windows con un recolector PowerShell de SOLO LECTURA (local o por WinRM): SMBv1, firma SMB, WDigest, UAC, LLMNR, Defender, firewall, RDP/NLA, cuenta Guest, administradores locales y PowerShell v2. No se conecta ni cambia nada: en modo advisory entrega el script para correrlo a mano (flujo MobaXterm/WinRM) y con collected_file parsea la salida.",
+    inputSchema: {
+      collected_file: external_exports.string().optional().describe("Archivo con la salida del recolector PowerShell (win-collect.ps1)"),
+      target: external_exports.string().optional().describe("Nombre del servidor para el inventario (si la salida no lo trae)")
+    },
+    annotations: { readOnlyHint: true }
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(windowsAdvisory(a.target));
+      const file2 = path13.resolve(a.collected_file);
+      if (!fs16.existsSync(file2)) return fail(`No existe ${file2}`);
+      const parsed = parseWindowsCollected(fs16.readFileSync(file2, "utf8"), a.target?.trim() || "servidor-windows");
+      const { meta: meta3 } = newRun("windows", parsed.host, { source: file2 });
+      const o = {
+        run: { tool: "win-audit", status: "ok", count: parsed.findings.length, message: `Windows \xB7 ${parsed.host}` },
         findings: parsed.findings
       };
       return text(await finishRun(meta3, [o], null));

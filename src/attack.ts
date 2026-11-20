@@ -37,6 +37,8 @@ const CATALOG: Record<string, { name: string; tactic: string }> = {
   T1040: { name: "Network Sniffing", tactic: "Acceso a credenciales" },
   T1557: { name: "Adversary-in-the-Middle", tactic: "Acceso a credenciales" },
   "T1021.004": { name: "Remote Services: SSH", tactic: "Movimiento lateral" },
+  T1003: { name: "OS Credential Dumping", tactic: "Acceso a credenciales" },
+  T1210: { name: "Exploitation of Remote Services", tactic: "Movimiento lateral" },
   T1046: { name: "Network Service Discovery", tactic: "Descubrimiento" },
   T1083: { name: "File and Directory Discovery", tactic: "Descubrimiento" },
   T1526: { name: "Cloud Service Discovery", tactic: "Descubrimiento" },
@@ -73,6 +75,9 @@ function byRuleId(ruleId: string): string[] {
   if (r === "XOL-AD-KRBTGT") return ["T1558.001"];
   if (r === "XOL-AD-UNCONSTRAINED" || r === "XOL-AD-MAQ") return ["T1558"];
   if (r === "XOL-AD-REVERSIBLE") return ["T1552.001"];
+  if (r === "XOL-WIN-WDIGEST") return ["T1003"];
+  if (r === "XOL-WIN-SMB1") return ["T1210"];
+  if (r === "XOL-WIN-LLMNR") return ["T1557"];
   const exact: Record<string, string[]> = {
     "XOL-SSH-001": ["T1021.004", "T1110"],
     "XOL-SSH-002": ["T1110", "T1021.004"],
