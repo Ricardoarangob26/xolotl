@@ -34,6 +34,7 @@ import { confirmFinding, VERDICT_ES } from "./confirm.js";
 import { untrustedSection } from "./untrusted.js";
 import { advisoryLynis, parseLynisReport, runLynisViaSsh } from "./lynis.js";
 import { dbAdvisory, parseDbCollected } from "./db.js";
+import { adAdvisory, parseAdCollected } from "./ad.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -523,6 +524,36 @@ server.registerTool(
       const { meta } = newRun("db", parsed.host, { engine: a.engine, version: parsed.version, source: file });
       const o: Outcome = {
         run: { tool: "db-audit", status: "ok", version: parsed.version, count: parsed.findings.length, message: `${a.engine}${parsed.version ? ` · ${parsed.version.slice(0, 40)}` : ""}` },
+        findings: parsed.findings,
+      };
+      return text(await finishRun(meta, [o], null));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "scan_ad",
+  {
+    title: "Postura de Active Directory",
+    description:
+      "Evalúa la postura de seguridad de un dominio de Active Directory con una cuenta de SOLO LECTURA, al estilo PingCastle: política de contraseñas (vs NIST 800-63B / CIS), cuentas privilegiadas, delegación sin restricción, Kerberoasting/AS-REP, antigüedad de krbtgt, MachineAccountQuota y cuentas inactivas. No se conecta ni cambia nada: en modo advisory entrega un script PowerShell de solo lectura para correrlo en un equipo del dominio (flujo MobaXterm) y con collected_file parsea la salida.",
+    inputSchema: {
+      collected_file: z.string().optional().describe("Archivo con la salida del script PowerShell de solo lectura (ad-collect.ps1)"),
+      target: z.string().optional().describe("Nombre del dominio para el inventario (si el archivo no lo trae)"),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(adAdvisory(a.target));
+      const file = path.resolve(a.collected_file);
+      if (!fs.existsSync(file)) return fail(`No existe ${file}`);
+      const parsed = parseAdCollected(fs.readFileSync(file, "utf8"), a.target?.trim() || "dominio");
+      const { meta } = newRun("ad", parsed.domain, { source: file });
+      const o: Outcome = {
+        run: { tool: "ad-audit", status: "ok", count: parsed.findings.length, message: `dominio ${parsed.domain}` },
         findings: parsed.findings,
       };
       return text(await finishRun(meta, [o], null));

@@ -92,7 +92,7 @@ que tú entregas; lo que toca un sistema vivo respeta Tier 1/Tier 2 y el alcance
 | Nube: plano de control | Prowler con rol de solo lectura | Usuario de lectura |
 | Kubernetes: postura | kube-bench (CIS) + Kubescape (NSA/MITRE) | Usuario de lectura (kubeconfig RO) |
 | Windows Server | Inventario por WinRM + HardeningKitty | Credenciales |
-| Directorio Activo: postura | LDAP de solo lectura: política de contraseñas vs NIST 800-63B, cuentas privilegiadas, delegaciones, ACL riesgosas, cuentas inactivas (al estilo PingCastle) | Usuario de lectura del dominio |
+| Directorio Activo: postura | ✅ `scan_ad` (solo lectura, PowerShell): política de contraseñas vs NIST/CIS, cuentas privilegiadas, delegación sin restricción, Kerberoasting/AS-REP, krbtgt, MachineAccountQuota, cuentas inactivas (estilo PingCastle). Los hallazgos Kerberos mapean a ATT&CK T1558. Pendiente: enumeración de ACL riesgosas objeto por objeto | Usuario de lectura del dominio |
 | Bases de datos: configuración | ✅ **PostgreSQL y MySQL/MariaDB** (`scan_db`): cifrado (TLS), autenticación (pg_hba / cuentas sin contraseña, anónimas, plugin débil), exposición de red, cuentas privilegiadas y auditoría — con cuenta RO, Tier 1. Pendiente: SQL Server (mismo armazón) | Usuario de lectura |
 | Monitoreo continuo | API de Wazuh (vulnerabilidades + CIS) | Usuario de lectura |
 | **Hardening de Linux (del diplomado)** | Guías de endurecimiento accionables sobre los hallazgos de `scan_host`: SSH, kernel, SELinux/AppArmor, auditd, firewall, montajes | Usuario de lectura / credenciales |
@@ -194,7 +194,7 @@ referencia histórica.
 | Cumplimiento (`compliance-mapper`, `stig-analyst`) | ✅ mapeo a 5 marcos (OWASP/PCI/NIST/ISO/CIS) | 🔵 STIG/CIS formales (Fase 2) |
 | Planeación (`engagement-planner`, `attack-planner`) | ✅ `engagement` (reglas de enfrentamiento) + mapeo ATT&CK | — |
 | Nube y contenedores (`cloud-security`, `container-breakout`) | 🟡 imágenes e IaC | 🔵 Prowler + Kubernetes (Fase 2) |
-| Directorio Activo (`ad-attacker`, `password-auditor`) | ❌ | 🔵 postura (Fase 2) · 🔴 validación (Fase 5) |
+| Directorio Activo (`ad-attacker`, `password-auditor`) | ✅ `scan_ad` (postura de solo lectura) | 🔴 validación (Fase 5) |
 | Escalada de privilegios (`privesc-advisor`) | 🟡 SUID/sudoers/kernel en `scan_host` | 🔴 rutas demostrables (Fase 5) |
 | Cadena de suministro y CI/CD (`supply-chain-auditor`, `cicd-redteam`) | 🟡 SCA | 🔵 Fase 2.5 |
 | Criptografía (`crypto-analyzer`) | 🟡 TLS en red | 🔵 mal uso en código (Fase 2.5) |

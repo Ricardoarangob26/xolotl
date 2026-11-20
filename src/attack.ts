@@ -30,6 +30,10 @@ const CATALOG: Record<string, { name: string; tactic: string }> = {
   T1053: { name: "Scheduled Task/Job", tactic: "Persistencia" },
   T1110: { name: "Brute Force", tactic: "Acceso a credenciales" },
   "T1552.001": { name: "Unsecured Credentials: Credentials In Files", tactic: "Acceso a credenciales" },
+  T1558: { name: "Steal or Forge Kerberos Tickets", tactic: "Acceso a credenciales" },
+  "T1558.001": { name: "Golden Ticket", tactic: "Acceso a credenciales" },
+  "T1558.003": { name: "Kerberoasting", tactic: "Acceso a credenciales" },
+  "T1558.004": { name: "AS-REP Roasting", tactic: "Acceso a credenciales" },
   T1040: { name: "Network Sniffing", tactic: "Acceso a credenciales" },
   T1557: { name: "Adversary-in-the-Middle", tactic: "Acceso a credenciales" },
   "T1021.004": { name: "Remote Services: SSH", tactic: "Movimiento lateral" },
@@ -64,6 +68,11 @@ function byRuleId(ruleId: string): string[] {
   const r = ruleId.toUpperCase();
   if (r.startsWith("XOL-NET-EXP-")) return ["T1133", "T1046"];
   if (r.startsWith("XOL-TLS-")) return ["T1557", "T1040"];
+  if (r === "XOL-AD-KERBEROAST") return ["T1558.003"];
+  if (r === "XOL-AD-ASREP") return ["T1558.004"];
+  if (r === "XOL-AD-KRBTGT") return ["T1558.001"];
+  if (r === "XOL-AD-UNCONSTRAINED" || r === "XOL-AD-MAQ") return ["T1558"];
+  if (r === "XOL-AD-REVERSIBLE") return ["T1552.001"];
   const exact: Record<string, string[]> = {
     "XOL-SSH-001": ["T1021.004", "T1110"],
     "XOL-SSH-002": ["T1110", "T1021.004"],

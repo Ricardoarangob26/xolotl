@@ -37848,6 +37848,10 @@ var CATALOG = {
   T1053: { name: "Scheduled Task/Job", tactic: "Persistencia" },
   T1110: { name: "Brute Force", tactic: "Acceso a credenciales" },
   "T1552.001": { name: "Unsecured Credentials: Credentials In Files", tactic: "Acceso a credenciales" },
+  T1558: { name: "Steal or Forge Kerberos Tickets", tactic: "Acceso a credenciales" },
+  "T1558.001": { name: "Golden Ticket", tactic: "Acceso a credenciales" },
+  "T1558.003": { name: "Kerberoasting", tactic: "Acceso a credenciales" },
+  "T1558.004": { name: "AS-REP Roasting", tactic: "Acceso a credenciales" },
   T1040: { name: "Network Sniffing", tactic: "Acceso a credenciales" },
   T1557: { name: "Adversary-in-the-Middle", tactic: "Acceso a credenciales" },
   "T1021.004": { name: "Remote Services: SSH", tactic: "Movimiento lateral" },
@@ -37878,6 +37882,11 @@ function byRuleId(ruleId) {
   const r = ruleId.toUpperCase();
   if (r.startsWith("XOL-NET-EXP-")) return ["T1133", "T1046"];
   if (r.startsWith("XOL-TLS-")) return ["T1557", "T1040"];
+  if (r === "XOL-AD-KERBEROAST") return ["T1558.003"];
+  if (r === "XOL-AD-ASREP") return ["T1558.004"];
+  if (r === "XOL-AD-KRBTGT") return ["T1558.001"];
+  if (r === "XOL-AD-UNCONSTRAINED" || r === "XOL-AD-MAQ") return ["T1558"];
+  if (r === "XOL-AD-REVERSIBLE") return ["T1552.001"];
   const exact = {
     "XOL-SSH-001": ["T1021.004", "T1110"],
     "XOL-SSH-002": ["T1110", "T1021.004"],
@@ -39701,9 +39710,9 @@ async function collectViaSsh(o, script) {
   return r.stdout;
 }
 async function scanHostText(dir, text2, ignoreUnfixed, timeoutMs) {
-  const sections2 = parseCollected(text2);
-  const info = hostInfo(sections2);
-  const checks = hardeningChecks(sections2, info);
+  const sections3 = parseCollected(text2);
+  const info = hostInfo(sections3);
+  const checks = hardeningChecks(sections3, info);
   const config2 = {
     run: { tool: "xolotl-host", status: "ok", count: checks.length, message: `${info.osName} \xB7 kernel ${info.kernel} \xB7 ${info.root ? "con root" : "sin root (parcial)"}` },
     findings: checksToFindings(checks, info)
@@ -39712,7 +39721,7 @@ async function scanHostText(dir, text2, ignoreUnfixed, timeoutMs) {
     fs10.writeFileSync(path9.join(dir, "host-collect.txt"), text2);
     return { info, outcomes: [config2, { run: { tool: "trivy", status: "skipped", message: `distribuci\xF3n no soportada para vulnerabilidades (${info.osId})` }, findings: [] }] };
   }
-  const sbomFile = writeArtifacts(dir, text2, buildSbom(sections2, info));
+  const sbomFile = writeArtifacts(dir, text2, buildSbom(sections3, info));
   const vulns = await guarded("trivy", async (t) => {
     const out = path9.join(dir, "trivy-host.json");
     const args = ["sbom", "--scanners", "vuln", "--format", "json", "--output", out, "--quiet", "--timeout", `${Math.round(timeoutMs / 6e4)}m`, ...ignoreUnfixed ? ["--ignore-unfixed"] : [], sbomFile];
@@ -40552,6 +40561,118 @@ function parseDbCollected(engine, text2, host = "base-de-datos") {
   return { findings, version: version2, host };
 }
 
+// src/ad.ts
+var AD_COLLECTOR = [
+  "Import-Module ActiveDirectory",
+  "$d = Get-ADDomain",
+  '"===XOLOTL meta==="',
+  '"domain|$($d.DNSRoot)"',
+  '"forest_mode|$((Get-ADForest).ForestMode)"',
+  "$p = Get-ADDefaultDomainPasswordPolicy",
+  '"===XOLOTL policy==="',
+  '"MinPasswordLength|$($p.MinPasswordLength)"',
+  '"PasswordHistoryCount|$($p.PasswordHistoryCount)"',
+  '"MaxPasswordAgeDays|$([int]$p.MaxPasswordAge.TotalDays)"',
+  '"LockoutThreshold|$($p.LockoutThreshold)"',
+  '"ComplexityEnabled|$($p.ComplexityEnabled)"',
+  '"ReversibleEncryptionEnabled|$($p.ReversibleEncryptionEnabled)"',
+  '"===XOLOTL metrics==="',
+  "function C($x){ ($x | Measure-Object).Count }",
+  `"domain_admins|$(C (Get-ADGroupMember 'Domain Admins' -Recursive))"`,
+  `"enterprise_admins|$(C (Get-ADGroupMember 'Enterprise Admins' -Recursive -ErrorAction SilentlyContinue))"`,
+  `"administrators|$(C (Get-ADGroupMember 'Administrators' -Recursive -ErrorAction SilentlyContinue))"`,
+  '"krbtgt_password_age_days|$([int]((Get-Date) - (Get-ADUser krbtgt -Properties PasswordLastSet).PasswordLastSet).TotalDays)"',
+  `"unconstrained_delegation|$(C (Get-ADObject -Filter { (userAccountControl -band 524288) -and (objectClass -eq 'user' -or objectClass -eq 'computer') } -ErrorAction SilentlyContinue))"`,
+  `"kerberoastable_users|$(C (Get-ADUser -Filter { ServicePrincipalName -like '*' -and Enabled -eq $true }))"`,
+  '"asrep_roastable|$(C (Get-ADUser -Filter { DoesNotRequirePreAuth -eq $true -and Enabled -eq $true }))"',
+  '"reversible_pwd_accounts|$(C (Get-ADUser -Filter { AllowReversiblePasswordEncryption -eq $true -and Enabled -eq $true }))"',
+  '"pwd_never_expires_privileged|$(C (Get-ADUser -Filter { PasswordNeverExpires -eq $true -and adminCount -eq 1 -and Enabled -eq $true }))"',
+  '"inactive_enabled_accounts|$(C (Search-ADAccount -AccountInactive -UsersOnly -TimeSpan 90.00:00:00 | Where-Object Enabled))"',
+  `"machine_account_quota|$((Get-ADObject $d.DistinguishedName -Properties ms-DS-MachineAccountQuota).'ms-DS-MachineAccountQuota')"`
+].join("\r\n");
+function adAdvisory(target) {
+  return [
+    `## Tier 1 \xB7 advisory \u2014 postura de Active Directory${target ? ` (${target})` : ""} (solo lectura)`,
+    "El script solo consulta el dominio (Get-AD*, Search-ADAccount): no cambia nada. Necesita el",
+    "m\xF3dulo ActiveDirectory (RSAT) y una cuenta con lectura del dominio (un usuario normal suele bastar).",
+    "",
+    "En un equipo unido al dominio (PowerShell):",
+    "  1. Guarda este script como ad-collect.ps1:",
+    "",
+    AD_COLLECTOR,
+    "",
+    "  2. Ejec\xFAtalo y vuelca la salida a un archivo (UTF-8):",
+    "       powershell -ExecutionPolicy Bypass -File ad-collect.ps1 | Out-File -Encoding utf8 ad-audit.txt",
+    "",
+    "  3. Volver: scan_ad con collected_file=<ruta de ad-audit.txt>."
+  ].join("\n");
+}
+function sections2(text2) {
+  const out = {};
+  let cur = "";
+  for (const raw of text2.split(/\r?\n/)) {
+    const m = raw.match(/^===XOLOTL (\w+)===/);
+    if (m) {
+      cur = m[1];
+      out[cur] = [];
+      continue;
+    }
+    if (cur && raw.trim()) out[cur].push(raw.trim());
+  }
+  return out;
+}
+var toMap = (lines = []) => {
+  const m = {};
+  for (const l of lines) {
+    const i = l.indexOf("|");
+    if (i > 0) m[l.slice(0, i)] = l.slice(i + 1).trim();
+  }
+  return m;
+};
+function parseAdCollected(text2, fallbackDomain = "dominio") {
+  if (!/===XOLOTL (meta|policy|metrics)===/.test(text2))
+    throw new Error("La salida no trae las marcas ===XOLOTL \u2026===. Genera el archivo con el script que da scan_ad en modo advisory.");
+  const sec = sections2(text2);
+  const meta3 = toMap(sec.meta);
+  const pol = toMap(sec.policy);
+  const met = toMap(sec.metrics);
+  const domain2 = meta3.domain || fallbackDomain;
+  const out = [];
+  const add = (rule, severity, title, description, remediation, evidence) => out.push({ tool: "ad-audit", category: "config", severity, ruleId: rule, title, description, remediation, evidence, location: { target: domain2 } });
+  const num = (m, k) => k in m && m[k] !== "" ? Number(m[k]) : void 0;
+  const isTrue = (v) => (v ?? "").toLowerCase() === "true";
+  const minLen = num(pol, "MinPasswordLength");
+  if (minLen !== void 0 && minLen < 8) add("XOL-AD-PWLEN", "high", `Longitud m\xEDnima de contrase\xF1a muy baja (${minLen})`, "Por debajo de 8 caracteres las contrase\xF1as se descifran r\xE1pido. NIST 800-63B pone el m\xEDnimo en 8 y recomienda m\xE1s longitud antes que complejidad.", "Subir la longitud m\xEDnima a 14 (CIS) y cribar contra listas de contrase\xF1as filtradas.", `MinPasswordLength=${minLen}`);
+  else if (minLen !== void 0 && minLen < 14) add("XOL-AD-PWLEN", "medium", `Longitud m\xEDnima de contrase\xF1a por debajo de 14 (${minLen})`, "14 es la recomendaci\xF3n de CIS; favorece la longitud sobre las reglas de composici\xF3n (NIST 800-63B).", "Subir la longitud m\xEDnima a 14 y cribar contra contrase\xF1as filtradas.", `MinPasswordLength=${minLen}`);
+  if (isTrue(pol.ReversibleEncryptionEnabled)) add("XOL-AD-REVERSIBLE", "high", "Cifrado reversible de contrase\xF1as habilitado en la pol\xEDtica", "Con cifrado reversible las contrase\xF1as se pueden recuperar en claro desde la base del dominio: equivale a guardarlas sin cifrar.", "Desactivar el cifrado reversible en la GPO de pol\xEDtica de contrase\xF1as y rotar las afectadas.", "ReversibleEncryptionEnabled=True");
+  const lockout = num(pol, "LockoutThreshold");
+  if (lockout === 0) add("XOL-AD-LOCKOUT", "medium", "Sin bloqueo de cuentas tras intentos fallidos", "Con umbral de bloqueo 0 no hay freno a la fuerza bruta de contrase\xF1as en l\xEDnea.", "Fijar un umbral de bloqueo (p. ej. 5\u201310 intentos) con ventana y duraci\xF3n razonables.", "LockoutThreshold=0");
+  const hist = num(pol, "PasswordHistoryCount");
+  if (hist !== void 0 && hist < 24) add("XOL-AD-PWHIST", "low", `Historial de contrase\xF1as corto (${hist})`, "Un historial corto permite reutilizar contrase\xF1as recientes.", "Historial de 24 contrase\xF1as (recomendaci\xF3n CIS).", `PasswordHistoryCount=${hist}`);
+  if (!isTrue(pol.ComplexityEnabled) && pol.ComplexityEnabled !== void 0) add("XOL-AD-COMPLEX", "low", "Complejidad de contrase\xF1as desactivada", "Sin complejidad y sin longitud alta ni cribado de contrase\xF1as filtradas, se aceptan contrase\xF1as triviales.", "Habilitar complejidad, o compensarla con longitud alta (15+) y cribado de contrase\xF1as filtradas.", "ComplexityEnabled=False");
+  const krbtgt = num(met, "krbtgt_password_age_days");
+  if (krbtgt !== void 0 && krbtgt > 365) add("XOL-AD-KRBTGT", "high", `Contrase\xF1a de krbtgt sin rotar hace ${krbtgt} d\xEDas`, "La clave de krbtgt firma todos los tickets Kerberos; si se filtr\xF3, permite Golden Tickets persistentes. M\xE1s de un a\xF1o sin rotar es alto riesgo.", "Rotar la contrase\xF1a de krbtgt dos veces (con intervalo), siguiendo el procedimiento de Microsoft.", `krbtgt_password_age_days=${krbtgt}`);
+  else if (krbtgt !== void 0 && krbtgt > 180) add("XOL-AD-KRBTGT", "medium", `Contrase\xF1a de krbtgt sin rotar hace ${krbtgt} d\xEDas`, "Conviene rotar krbtgt peri\xF3dicamente para limitar la vida de un Golden Ticket.", "Rotar krbtgt dos veces siguiendo el procedimiento de Microsoft (cada 6\u201312 meses).", `krbtgt_password_age_days=${krbtgt}`);
+  const uncon = num(met, "unconstrained_delegation");
+  if (uncon && uncon > 0) add("XOL-AD-UNCONSTRAINED", "high", `Cuentas con delegaci\xF3n sin restricci\xF3n (${uncon})`, "La delegaci\xF3n Kerberos sin restricci\xF3n deja que un host comprometido suplante a cualquier usuario que se le conecte, incluidos administradores.", "Quitar la delegaci\xF3n sin restricci\xF3n; usar delegaci\xF3n restringida (constrained) o basada en recursos, y marcar las cuentas sensibles como 'no delegables'.", `unconstrained_delegation=${uncon}`);
+  const asrep = num(met, "asrep_roastable");
+  if (asrep && asrep > 0) add("XOL-AD-ASREP", "high", `Cuentas sin preautenticaci\xF3n Kerberos (${asrep})`, "Sin preautenticaci\xF3n, cualquiera puede pedir un material cifrado con la contrase\xF1a de la cuenta y crackearlo offline (AS-REP Roasting).", "Activar la preautenticaci\xF3n Kerberos en esas cuentas (quitar DONT_REQ_PREAUTH).", `asrep_roastable=${asrep}`);
+  const kerb = num(met, "kerberoastable_users");
+  if (kerb && kerb > 0) add("XOL-AD-KERBEROAST", "medium", `Cuentas de servicio con SPN (${kerb})`, "Las cuentas de usuario con SPN permiten pedir tickets de servicio y crackear su contrase\xF1a offline (Kerberoasting); peligroso si tienen contrase\xF1a d\xE9bil o privilegios.", "Contrase\xF1as largas y aleatorias (25+), o cuentas gestionadas (gMSA); revisar que no tengan privilegios excesivos.", `kerberoastable_users=${kerb}`);
+  const maq = num(met, "machine_account_quota");
+  if (maq && maq > 0) add("XOL-AD-MAQ", "medium", `MachineAccountQuota permite crear equipos (${maq})`, "Con ms-DS-MachineAccountQuota > 0 cualquier usuario del dominio puede unir m\xE1quinas, lo que habilita ataques como RBCD.", "Poner ms-DS-MachineAccountQuota en 0 y delegar la uni\xF3n de equipos a un grupo concreto.", `machine_account_quota=${maq}`);
+  const da = num(met, "domain_admins");
+  if (da !== void 0 && da > 10) add("XOL-AD-DA", "medium", `Muchos miembros en Domain Admins (${da})`, "Cada Domain Admin es control total del dominio; cuantos m\xE1s, mayor superficie y m\xE1s dif\xEDcil de proteger.", "Reducir Domain Admins al m\xEDnimo; usar cuentas administrativas separadas y niveles (tiering).", `domain_admins=${da}`);
+  else if (da !== void 0 && da > 5) add("XOL-AD-DA", "low", `Revisar miembros de Domain Admins (${da})`, "Conviene mantener Domain Admins lo m\xE1s peque\xF1o posible.", "Revisar la pertenencia y quitar cuentas que no la necesiten.", `domain_admins=${da}`);
+  const ea = num(met, "enterprise_admins");
+  if (ea !== void 0 && ea > 1) add("XOL-AD-EA", "low", `Enterprise Admins con m\xE1s de un miembro (${ea})`, "Enterprise Admins controla todo el bosque; normalmente deber\xEDa estar casi vac\xEDo salvo cambios puntuales.", "Vaciar Enterprise Admins y agregar miembros solo durante operaciones que lo requieran.", `enterprise_admins=${ea}`);
+  const pne = num(met, "pwd_never_expires_privileged");
+  if (pne && pne > 0) add("XOL-AD-PNE", "low", `Cuentas privilegiadas con contrase\xF1a que no expira (${pne})`, "Una contrase\xF1a privilegiada que nunca cambia aumenta el impacto si se filtra.", "Revisar estas cuentas; para servicios, migrar a gMSA (rotaci\xF3n autom\xE1tica).", `pwd_never_expires_privileged=${pne}`);
+  const inactive = num(met, "inactive_enabled_accounts");
+  if (inactive && inactive > 0) add("XOL-AD-INACTIVE", "low", `Cuentas habilitadas e inactivas (${inactive})`, "Cuentas habilitadas sin uso en 90+ d\xEDas son superficie de ataque olvidada (contrase\xF1as viejas, sin MFA).", "Deshabilitar las cuentas inactivas tras confirmarlo con sus due\xF1os.", `inactive_enabled_accounts=${inactive}`);
+  return { findings: out, domain: domain2 };
+}
+
 // src/tier.ts
 var defaultMode = () => (process.env.XOLOTL_MODE ?? "").trim().toLowerCase() === "advisory" ? "advisory" : "execute";
 var resolveMode = (requested) => requested ?? defaultMode();
@@ -41290,6 +41411,34 @@ server.registerTool(
       const { meta: meta3 } = newRun("db", parsed.host, { engine: a.engine, version: parsed.version, source: file2 });
       const o = {
         run: { tool: "db-audit", status: "ok", version: parsed.version, count: parsed.findings.length, message: `${a.engine}${parsed.version ? ` \xB7 ${parsed.version.slice(0, 40)}` : ""}` },
+        findings: parsed.findings
+      };
+      return text(await finishRun(meta3, [o], null));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
+  "scan_ad",
+  {
+    title: "Postura de Active Directory",
+    description: "Eval\xFAa la postura de seguridad de un dominio de Active Directory con una cuenta de SOLO LECTURA, al estilo PingCastle: pol\xEDtica de contrase\xF1as (vs NIST 800-63B / CIS), cuentas privilegiadas, delegaci\xF3n sin restricci\xF3n, Kerberoasting/AS-REP, antig\xFCedad de krbtgt, MachineAccountQuota y cuentas inactivas. No se conecta ni cambia nada: en modo advisory entrega un script PowerShell de solo lectura para correrlo en un equipo del dominio (flujo MobaXterm) y con collected_file parsea la salida.",
+    inputSchema: {
+      collected_file: external_exports.string().optional().describe("Archivo con la salida del script PowerShell de solo lectura (ad-collect.ps1)"),
+      target: external_exports.string().optional().describe("Nombre del dominio para el inventario (si el archivo no lo trae)")
+    },
+    annotations: { readOnlyHint: true }
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(adAdvisory(a.target));
+      const file2 = path13.resolve(a.collected_file);
+      if (!fs16.existsSync(file2)) return fail(`No existe ${file2}`);
+      const parsed = parseAdCollected(fs16.readFileSync(file2, "utf8"), a.target?.trim() || "dominio");
+      const { meta: meta3 } = newRun("ad", parsed.domain, { source: file2 });
+      const o = {
+        run: { tool: "ad-audit", status: "ok", count: parsed.findings.length, message: `dominio ${parsed.domain}` },
         findings: parsed.findings
       };
       return text(await finishRun(meta3, [o], null));
