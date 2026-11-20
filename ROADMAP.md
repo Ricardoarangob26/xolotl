@@ -185,7 +185,7 @@ referencia histórica.
 | Código (`code-auditor`) | ✅ `scan_static`, `scan_codeql` | 🔵 |
 | Vulnerabilidades (`vuln-scanner`) | ✅ `scan_network`, `scan_dast`, `scan_host` | 🔵 |
 | Verificación de arreglos (`fix-verifier`) | ✅ `runs_diff`, `revalidate` + `appsec-fix` | 🟣 |
-| Informes (`report-generator`) | ✅ `report_generate` (técnico + resumen ejecutivo) | 🔵 |
+| Informes (`report-generator`) | ✅ `report_generate` (técnico + resumen ejecutivo; `scope=inventory` consolida todo el ecosistema) + skill `appsec-sweep` | 🔵 |
 | Memoria (`/memory`, `findings.sh`, `doctor.sh`) | ✅ BD SQLite, `inventory`, `xolotl_doctor`, `handoff` | 🧩 |
 | Recomendación (`/recommend`, `/agents-for`) | ✅ `inventory view=next`, `eval_plan` | 🧩 |
 | Puntuación de riesgo (`risk-scorer`) | ✅ EPSS + CISA KEV + CVSS (`risk_feeds`) | 🧩 |

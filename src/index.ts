@@ -28,7 +28,7 @@ import { TOP_PORTS } from "./network.js";
 import COLLECTOR from "./collector.sh";
 import { addScope, builtinScope, expandTargets, loadScope, matchScope, removeScope } from "./scope.js";
 import { clearEngagement, engagementMarkdown, engagementStatus, loadEngagement, setEngagement } from "./engagement.js";
-import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage } from "./store.js";
+import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage, summarize, ToolRun } from "./store.js";
 import { buildEvalPlan, findingHistory, inventorySummary, listAssets, queryFindings, suggestNextSteps } from "./inventory.js";
 import { confirmFinding, VERDICT_ES } from "./confirm.js";
 import { untrustedSection } from "./untrusted.js";
@@ -91,6 +91,47 @@ function summaryText(meta: RunMeta, findings: Finding[], top = 15): string {
   }
   lines.push("Siguiente: findings_query para filtrar, finding_get para ver el detalle con código, report_generate para el informe.");
   return lines.join("\n");
+}
+
+/**
+ * Reúne TODOS los hallazgos vivos del ecosistema (todas las corridas, deduplicados por huella
+ * quedándose con la más reciente) en una corrida sintética, para un informe transversal: resumen
+ * ejecutivo, ATT&CK y cumplimiento sobre todos los activos a la vez, no sobre una sola corrida.
+ */
+function loadEcosystem(): { meta: RunMeta; findings: Finding[] } {
+  const runs = listRuns(1000); // más reciente primero
+  if (!runs.length) throw new Error("El inventario está vacío. Lanza algún escaneo antes de pedir el informe del ecosistema.");
+  const byFp = new Map<string, Finding>();
+  const toolCount = new Map<string, number>();
+  let latest = "";
+  for (const r of runs) {
+    let loaded;
+    try {
+      loaded = loadRun(r.id);
+    } catch {
+      continue; // una corrida ilegible no debe tumbar el informe
+    }
+    if (!latest) latest = loaded.meta.finishedAt ?? loaded.meta.startedAt;
+    for (const f of loaded.findings) if (!byFp.has(f.fingerprint)) byFp.set(f.fingerprint, f); // la más reciente gana
+  }
+  const findings = [...byFp.values()].sort((a, b) => sevRank(a.severity) - sevRank(b.severity) || a.category.localeCompare(b.category));
+  const width = Math.max(3, String(findings.length).length);
+  findings.forEach((f, i) => {
+    f.id = `F-${String(i + 1).padStart(width, "0")}`;
+    for (const t of f.tools) toolCount.set(t, (toolCount.get(t) ?? 0) + 1);
+  });
+  const tools: ToolRun[] = [...toolCount.entries()].sort((a, b) => b[1] - a[1]).map(([tool, count]) => ({ tool, status: "ok", count }));
+  const assets = inventorySummary().assets;
+  const meta: RunMeta = {
+    id: "ecosistema",
+    kind: "inventario",
+    target: `Ecosistema (${assets} activo(s), ${runs.length} corrida(s))`,
+    startedAt: latest || new Date().toISOString(),
+    finishedAt: latest || new Date().toISOString(),
+    tools,
+    summary: summarize(findings),
+  };
+  return { meta, findings };
 }
 
 async function finishRun(meta: RunMeta, outcomes: Outcome[], root: string | null): Promise<string> {
@@ -1302,22 +1343,25 @@ server.registerTool(
   "report_generate",
   {
     title: "Generar informe",
-    description: "Genera el informe de una corrida en Markdown, HTML autocontenido, SARIF 2.1.0 (para GitHub/GitLab code scanning o VS Code) o JSON.",
+    description: "Genera el informe en Markdown, HTML autocontenido, SARIF 2.1.0 (para GitHub/GitLab code scanning o VS Code) o JSON. scope=run (por defecto) informa una corrida; scope=inventory informa TODO el ecosistema: reúne los hallazgos vivos de todas las corridas (deduplicados) con resumen ejecutivo, prioridad por riesgo, cobertura ATT&CK y brechas de cumplimiento sobre todos los activos.",
     inputSchema: {
       run_id: z.string().optional(),
+      scope: z.enum(["run", "inventory"]).optional().describe("run: una corrida (por defecto). inventory: todo el ecosistema (todas las corridas juntas)"),
       format: z.enum(["md", "html", "sarif", "json"]).optional().describe("Por defecto md"),
-      output_path: z.string().optional().describe("Ruta del archivo; por defecto dentro de la carpeta de la corrida"),
+      output_path: z.string().optional().describe("Ruta del archivo; por defecto dentro de la carpeta de la corrida (o ~/.xolotl para el ecosistema)"),
       include_suppressed: z.boolean().optional().describe("Incluye la tabla de descartados con su justificación (por defecto true)"),
     },
   },
   async (a) => {
     try {
-      const { meta, findings } = loadRun(a.run_id);
+      const ecosystem = a.scope === "inventory";
+      const { meta, findings } = ecosystem ? loadEcosystem() : loadRun(a.run_id);
       const fmt = a.format ?? "md";
       const incl = a.include_suppressed ?? true;
       // Corrida anterior del mismo objetivo y tipo, para la tendencia del resumen ejecutivo.
+      // (El informe del ecosistema no tiene "anterior": va sin tendencia.)
       let prev: { meta: RunMeta; findings: Finding[] } | undefined;
-      if (fmt === "md" || fmt === "html") {
+      if (!ecosystem && (fmt === "md" || fmt === "html")) {
         const prior = listRuns(200).find((r) => r.id !== meta.id && r.target === meta.target && r.kind === meta.kind && r.startedAt < meta.startedAt);
         if (prior) {
           try {
@@ -1333,10 +1377,11 @@ server.registerTool(
           : fmt === "html"
             ? toHtml(meta, findings, incl, prev)
             : JSON.stringify(fmt === "sarif" ? toSarif(meta, findings) : { meta, findings }, null, 2);
-      const file = path.resolve(a.output_path ?? path.join(runDir(meta.id), `informe.${fmt}`));
+      const defaultPath = ecosystem ? path.join(HOME, `ecosistema.${fmt}`) : path.join(runDir(meta.id), `informe.${fmt}`);
+      const file = path.resolve(a.output_path ?? defaultPath);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, body);
-      return text(`Informe ${fmt.toUpperCase()} escrito en ${file} (${meta.summary!.total} hallazgos activos).`);
+      return text(`Informe ${ecosystem ? "del ecosistema " : ""}${fmt.toUpperCase()} escrito en ${file} (${meta.summary!.total} hallazgos activos${ecosystem ? ` de ${meta.target}` : ""}).`);
     } catch (e) {
       return fail((e as Error).message);
     }

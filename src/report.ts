@@ -93,7 +93,7 @@ function topUrgent(active: Finding[], n = 3): Finding[] {
   if (enriched.length) return enriched;
   return active
     .slice()
-    .sort((a, b) => sevRank(b.severity) - sevRank(a.severity) || (b.cvss?.score ?? 0) - (a.cvss?.score ?? 0) || a.id.localeCompare(b.id))
+    .sort((a, b) => sevRank(a.severity) - sevRank(b.severity) || (b.cvss?.score ?? 0) - (a.cvss?.score ?? 0) || a.id.localeCompare(b.id))
     .slice(0, n);
 }
 
