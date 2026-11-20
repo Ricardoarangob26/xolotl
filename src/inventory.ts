@@ -585,3 +585,88 @@ export function suggestNextSteps(): AssetPlan[] {
   });
   return plans;
 }
+
+// ───────────────────────────── Plan de evaluación por activo (orquestación) ─────────────────────────────
+//
+// Toma los huecos de suggestNextSteps() y los ordena en un plan ejecutable por fases:
+// superficie (sin credenciales) → código → configuración interna → aplicación. Cada paso lleva
+// su nivel, su Tier por defecto y el acceso que necesita. No ejecuta nada: es el guion a seguir.
+
+export type AccessToken = "red" | "codigo" | "imagen" | "ssh" | "alcance";
+
+interface ToolMeta {
+  phase: number;
+  phaseName: string;
+  tier: string;
+  access: string;
+  token: AccessToken;
+}
+
+const TOOL_META: Record<string, ToolMeta> = {
+  scan_network: { phase: 1, phaseName: "Superficie expuesta (sin credenciales)", tier: "Tier 1 (advisory) o Tier 2 (conecta)", access: "red, ninguna credencial", token: "red" },
+  scan_static: { phase: 2, phaseName: "Código fuente", tier: "local", access: "código fuente", token: "codigo" },
+  scan_codeql: { phase: 2, phaseName: "Código fuente", tier: "local", access: "código fuente (lenguaje compilable)", token: "codigo" },
+  scan_iac: { phase: 2, phaseName: "Código fuente", tier: "local", access: "código fuente (IaC/manifiestos)", token: "codigo" },
+  scan_container_image: { phase: 2, phaseName: "Artefactos", tier: "local", access: "la imagen o acceso al registro", token: "imagen" },
+  scan_host: { phase: 3, phaseName: "Configuración interna del host", tier: "Tier 1 (entrega el recolector) o Tier 2 (SSH)", access: "SSH con llave (host en dast_scope) o salida de host_collector", token: "ssh" },
+  scan_dast: { phase: 4, phaseName: "Aplicación en ejecución (autorizado)", tier: "Tier 1 (advisory) o Tier 2 (ejecuta)", access: "alcance autorizado en dast_scope", token: "alcance" },
+};
+
+export interface PlanStep {
+  order: number;
+  phase: number;
+  phaseName: string;
+  asset: string;
+  kind: AssetKind;
+  criticality?: string;
+  tool: string;
+  level: TestLevel;
+  tier: string;
+  access: string;
+  token: AccessToken | "";
+  reason: string;
+}
+
+export interface EvalPlan {
+  steps: PlanStep[];
+  upToDate: Array<{ asset: string; kind: AssetKind }>;
+}
+
+export function buildEvalPlan(assetFilter?: string): EvalPlan {
+  const filter = assetFilter?.trim().toLowerCase();
+  const steps: PlanStep[] = [];
+  const upToDate: EvalPlan["upToDate"] = [];
+  for (const p of suggestNextSteps()) {
+    if (filter && !p.asset.toLowerCase().includes(filter)) continue;
+    if (!p.steps.length) {
+      upToDate.push({ asset: p.asset, kind: p.kind });
+      continue;
+    }
+    for (const s of p.steps) {
+      const meta = TOOL_META[s.tool];
+      steps.push({
+        order: 0,
+        phase: meta?.phase ?? 5,
+        phaseName: meta?.phaseName ?? "Otros",
+        asset: p.asset,
+        kind: p.kind,
+        criticality: p.criticality,
+        tool: s.tool,
+        level: s.level,
+        tier: meta?.tier ?? "—",
+        access: s.needs ?? meta?.access ?? "—",
+        token: meta?.token ?? "",
+        reason: s.reason,
+      });
+    }
+  }
+  steps.sort(
+    (a, b) =>
+      a.phase - b.phase ||
+      (CRIT_RANK[a.criticality ?? "normal"] ?? 2) - (CRIT_RANK[b.criticality ?? "normal"] ?? 2) ||
+      a.asset.localeCompare(b.asset) ||
+      a.tool.localeCompare(b.tool),
+  );
+  steps.forEach((s, i) => (s.order = i + 1));
+  return { steps, upToDate };
+}

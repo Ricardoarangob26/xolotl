@@ -37661,6 +37661,49 @@ function suggestNextSteps() {
   });
   return plans;
 }
+var TOOL_META = {
+  scan_network: { phase: 1, phaseName: "Superficie expuesta (sin credenciales)", tier: "Tier 1 (advisory) o Tier 2 (conecta)", access: "red, ninguna credencial", token: "red" },
+  scan_static: { phase: 2, phaseName: "C\xF3digo fuente", tier: "local", access: "c\xF3digo fuente", token: "codigo" },
+  scan_codeql: { phase: 2, phaseName: "C\xF3digo fuente", tier: "local", access: "c\xF3digo fuente (lenguaje compilable)", token: "codigo" },
+  scan_iac: { phase: 2, phaseName: "C\xF3digo fuente", tier: "local", access: "c\xF3digo fuente (IaC/manifiestos)", token: "codigo" },
+  scan_container_image: { phase: 2, phaseName: "Artefactos", tier: "local", access: "la imagen o acceso al registro", token: "imagen" },
+  scan_host: { phase: 3, phaseName: "Configuraci\xF3n interna del host", tier: "Tier 1 (entrega el recolector) o Tier 2 (SSH)", access: "SSH con llave (host en dast_scope) o salida de host_collector", token: "ssh" },
+  scan_dast: { phase: 4, phaseName: "Aplicaci\xF3n en ejecuci\xF3n (autorizado)", tier: "Tier 1 (advisory) o Tier 2 (ejecuta)", access: "alcance autorizado en dast_scope", token: "alcance" }
+};
+function buildEvalPlan(assetFilter) {
+  const filter = assetFilter?.trim().toLowerCase();
+  const steps = [];
+  const upToDate = [];
+  for (const p of suggestNextSteps()) {
+    if (filter && !p.asset.toLowerCase().includes(filter)) continue;
+    if (!p.steps.length) {
+      upToDate.push({ asset: p.asset, kind: p.kind });
+      continue;
+    }
+    for (const s of p.steps) {
+      const meta3 = TOOL_META[s.tool];
+      steps.push({
+        order: 0,
+        phase: meta3?.phase ?? 5,
+        phaseName: meta3?.phaseName ?? "Otros",
+        asset: p.asset,
+        kind: p.kind,
+        criticality: p.criticality,
+        tool: s.tool,
+        level: s.level,
+        tier: meta3?.tier ?? "\u2014",
+        access: s.needs ?? meta3?.access ?? "\u2014",
+        token: meta3?.token ?? "",
+        reason: s.reason
+      });
+    }
+  }
+  steps.sort(
+    (a, b) => a.phase - b.phase || (CRIT_RANK[a.criticality ?? "normal"] ?? 2) - (CRIT_RANK[b.criticality ?? "normal"] ?? 2) || a.asset.localeCompare(b.asset) || a.tool.localeCompare(b.tool)
+  );
+  steps.forEach((s, i) => s.order = i + 1);
+  return { steps, upToDate };
+}
 
 // src/store.ts
 var slug = (s) => s.replace(/^[a-z]+:\/\//i, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(-40).toLowerCase() || "objetivo";
@@ -40557,6 +40600,66 @@ server.registerTool(
         return `${r.severity} ${r.category}${pkg} \u2014 ${r.title}${cve} \xB7 ${r.asset} [${r.tool_used}] {${r.status}}${n} \xB7 ${r.fingerprint}`;
       });
       return text([`${rows.length} hallazgo(s) en el inventario:`, ...out].join("\n"));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
+  "eval_plan",
+  {
+    title: "Plan de evaluaci\xF3n por activo",
+    description: "Arma el guion ordenado de qu\xE9 evaluar y en qu\xE9 orden, por activo, a partir del inventario. Encadena las tools por fases \u2014superficie sin credenciales (scan_network) \u2192 c\xF3digo (scan_static/codeql/iac, im\xE1genes) \u2192 configuraci\xF3n interna (scan_host) \u2192 aplicaci\xF3n autorizada (scan_dast)\u2014 y para cada paso dice su nivel (c\xF3digo/app/m\xE1quina), su Tier por defecto y el acceso que necesita. No ejecuta nada: es el plan a seguir. Filtra por activo con 'asset'; con 'access' separa lo que puedes correr ya de lo que espera acceso.",
+    inputSchema: {
+      asset: external_exports.string().optional().describe("Planifica solo los activos que coincidan con este fragmento (host, URL o ruta)"),
+      access: external_exports.array(external_exports.enum(["red", "codigo", "imagen", "ssh", "alcance"])).optional().describe("Acceso que tienes ahora: red (sin credenciales), codigo (fuente), imagen (imagen/registro), ssh (llave al host), alcance (DAST autorizado en dast_scope). Si lo pasas, separa 'ahora' de 'cuando tengas acceso'")
+    },
+    annotations: { readOnlyHint: true }
+  },
+  async (a) => {
+    try {
+      const { steps, upToDate } = buildEvalPlan(a.asset);
+      if (!steps.length && !upToDate.length)
+        return text("Inventario vac\xEDo o sin coincidencias. Lanza un escaneo (scan_static, scan_network, scan_host\u2026) o ajusta 'asset'.");
+      const KIND_ES = { host: "host", web: "web", code: "c\xF3digo", image: "imagen", unknown: "activo" };
+      const LVL = { code: "c\xF3digo", app: "app", machine: "m\xE1quina" };
+      const render = (s, n) => {
+        const crit = s.criticality ? `, criticidad ${s.criticality}` : "";
+        return [
+          `  ${n}. ${s.asset} (${KIND_ES[s.kind]}${crit}) \xB7 ${s.tool} \u2014 ${s.reason}`,
+          `     nivel ${LVL[s.level]} \xB7 ${s.tier} \xB7 acceso: ${s.access}`
+        ].join("\n");
+      };
+      const byPhase = (list) => {
+        const out2 = [];
+        let phase = -1;
+        let n = 0;
+        for (const s of list) {
+          if (s.phase !== phase) {
+            phase = s.phase;
+            out2.push("", `Fase ${s.phase} \xB7 ${s.phaseName}`);
+          }
+          out2.push(render(s, ++n));
+        }
+        return out2;
+      };
+      const out = ["Plan de evaluaci\xF3n por activo", "(orden: superficie \u2192 c\xF3digo \u2192 configuraci\xF3n \u2192 aplicaci\xF3n)"];
+      if (a.access?.length) {
+        const have = new Set(a.access);
+        const now = steps.filter((s) => !s.token || have.has(s.token));
+        const later = steps.filter((s) => s.token && !have.has(s.token));
+        out.push("", `Acceso declarado: ${a.access.join(", ")}`, "", "\u2501\u2501 Ahora (con tu acceso) \u2501\u2501");
+        out.push(...now.length ? byPhase(now) : ["", "  (nada pendiente con el acceso que tienes)"]);
+        if (later.length) {
+          out.push("", "\u2501\u2501 Cuando tengas acceso \u2501\u2501");
+          out.push(...byPhase(later));
+        }
+      } else {
+        out.push(...byPhase(steps));
+      }
+      if (upToDate.length) out.push("", `Al d\xEDa: ${upToDate.map((u) => `${u.asset} (${KIND_ES[u.kind]})`).join(" \xB7 ")}`);
+      if (!steps.length) out.push("", "No hay pasos pendientes: todo lo inventariado tiene cubiertas las pruebas que aplican a su tipo.");
+      return text(out.join("\n").replace(/^\n+/, "").trimEnd());
     } catch (e) {
       return fail(e.message);
     }

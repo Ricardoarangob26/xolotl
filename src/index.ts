@@ -28,7 +28,7 @@ import { TOP_PORTS } from "./network.js";
 import COLLECTOR from "./collector.sh";
 import { addScope, builtinScope, expandTargets, loadScope, matchScope, removeScope } from "./scope.js";
 import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setTriage } from "./store.js";
-import { findingHistory, inventorySummary, listAssets, queryFindings, suggestNextSteps } from "./inventory.js";
+import { buildEvalPlan, findingHistory, inventorySummary, listAssets, queryFindings, suggestNextSteps } from "./inventory.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -821,6 +821,71 @@ server.registerTool(
         return `${r.severity} ${r.category}${pkg} — ${r.title}${cve} · ${r.asset} [${r.tool_used}] {${r.status}}${n} · ${r.fingerprint}`;
       });
       return text([`${rows.length} hallazgo(s) en el inventario:`, ...out].join("\n"));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "eval_plan",
+  {
+    title: "Plan de evaluación por activo",
+    description:
+      "Arma el guion ordenado de qué evaluar y en qué orden, por activo, a partir del inventario. Encadena las tools por fases —superficie sin credenciales (scan_network) → código (scan_static/codeql/iac, imágenes) → configuración interna (scan_host) → aplicación autorizada (scan_dast)— y para cada paso dice su nivel (código/app/máquina), su Tier por defecto y el acceso que necesita. No ejecuta nada: es el plan a seguir. Filtra por activo con 'asset'; con 'access' separa lo que puedes correr ya de lo que espera acceso.",
+    inputSchema: {
+      asset: z.string().optional().describe("Planifica solo los activos que coincidan con este fragmento (host, URL o ruta)"),
+      access: z
+        .array(z.enum(["red", "codigo", "imagen", "ssh", "alcance"]))
+        .optional()
+        .describe("Acceso que tienes ahora: red (sin credenciales), codigo (fuente), imagen (imagen/registro), ssh (llave al host), alcance (DAST autorizado en dast_scope). Si lo pasas, separa 'ahora' de 'cuando tengas acceso'"),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async (a) => {
+    try {
+      const { steps, upToDate } = buildEvalPlan(a.asset);
+      if (!steps.length && !upToDate.length)
+        return text("Inventario vacío o sin coincidencias. Lanza un escaneo (scan_static, scan_network, scan_host…) o ajusta 'asset'.");
+      const KIND_ES: Record<string, string> = { host: "host", web: "web", code: "código", image: "imagen", unknown: "activo" };
+      const LVL: Record<string, string> = { code: "código", app: "app", machine: "máquina" };
+      const render = (s: (typeof steps)[number], n: number) => {
+        const crit = s.criticality ? `, criticidad ${s.criticality}` : "";
+        return [
+          `  ${n}. ${s.asset} (${KIND_ES[s.kind]}${crit}) · ${s.tool} — ${s.reason}`,
+          `     nivel ${LVL[s.level]} · ${s.tier} · acceso: ${s.access}`,
+        ].join("\n");
+      };
+      const byPhase = (list: typeof steps) => {
+        const out: string[] = [];
+        let phase = -1;
+        let n = 0;
+        for (const s of list) {
+          if (s.phase !== phase) {
+            phase = s.phase;
+            out.push("", `Fase ${s.phase} · ${s.phaseName}`);
+          }
+          out.push(render(s, ++n));
+        }
+        return out;
+      };
+      const out: string[] = ["Plan de evaluación por activo", "(orden: superficie → código → configuración → aplicación)"];
+      if (a.access?.length) {
+        const have = new Set(a.access);
+        const now = steps.filter((s) => !s.token || have.has(s.token));
+        const later = steps.filter((s) => s.token && !have.has(s.token));
+        out.push("", `Acceso declarado: ${a.access.join(", ")}`, "", "━━ Ahora (con tu acceso) ━━");
+        out.push(...(now.length ? byPhase(now) : ["", "  (nada pendiente con el acceso que tienes)"]));
+        if (later.length) {
+          out.push("", "━━ Cuando tengas acceso ━━");
+          out.push(...byPhase(later));
+        }
+      } else {
+        out.push(...byPhase(steps));
+      }
+      if (upToDate.length) out.push("", `Al día: ${upToDate.map((u) => `${u.asset} (${KIND_ES[u.kind]})`).join(" · ")}`);
+      if (!steps.length) out.push("", "No hay pasos pendientes: todo lo inventariado tiene cubiertas las pruebas que aplican a su tipo.");
+      return text(out.join("\n").replace(/^\n+/, "").trimEnd());
     } catch (e) {
       return fail((e as Error).message);
     }

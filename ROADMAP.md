@@ -64,7 +64,7 @@ copiar agentes, sino que cada dominio defensivo o de evaluación tenga motor, sk
 | Tráfico, IR, malware, reversa (`traffic-analyzer`, `forensics-analyst`, `malware-analyst`, `reverse-engineer`) | ❌ | **Fase 4** (análisis offline de artefactos) |
 | Móvil, firmware, OT (`mobile-pentester`, `iot-pentester`, `scada-attacker`) | ❌ | Análisis estático/pasivo → Fase 4 |
 | Detección y amenazas (`detection-engineer`, `threat-modeler`) | ❌ | **Fase 4** |
-| Orquestación (`swarm-orchestrator`) | 🟡 tools sueltas | Plan de evaluación por activo → Fase 1.5 |
+| Orquestación (`swarm-orchestrator`) | ✅ `eval_plan` + skill `appsec-plan` encadenan las tools por fases | — |
 | Costo de tokens (`-Lite` → Haiku) | 🟡 modelo local posible | Sugerencia de modelo por skill → Fase 1.5 |
 | Validación ofensiva (`credential-tester`, `password-auditor`, `network-attacker`, `lateral-movement`, `privesc-advisor`, `exploit-chainer`, `ad-attacker`, `payload-crafter`) | ❌ | **Fase 5**, sobre sistemas propios ya documentados |
 | Validación de defensas (`evasion-specialist`, `detection-engineer` como blue/purple team) | ❌ | **Fase 5** (purple team) |
@@ -85,7 +85,7 @@ Es lo más barato y lo que más valor agrega: todo lo que ya se escanea gana con
 | **Resumen ejecutivo** | Sección de negocio en el informe: tendencia (nuevos/persistentes), top de riesgo, avance de remediación. | `report-generator` |
 | **Traspaso de compromiso** ✅ | Tool `handoff` (export/import): un archivo JSON con alcance, triage, criticidad de activos, inventario acumulado y los artefactos de cada corrida, para retomar en otra sesión o máquina (fusión o reemplazo). No incluye los feeds (se rebajan con `risk_feeds`). | `handoff.sh` |
 | **Siguiente paso sugerido** ✅ | `inventory view=next`: por activo, infiere su tipo (host, web, código, imagen), muestra una matriz de cobertura (qué pruebas aplican y cuáles ya corrieron) y propone las que faltan con su nivel (código/app/máquina) y el acceso que necesitan. Lee señales del propio inventario —puertos abiertos del hallazgo de red, p. ej. "puerto web 8080 abierto y sin DAST"; "host sin revisión de configuración"; "SAST hecho, falta CodeQL/IaC"— y ordena por criticidad del activo. Es el mapa de "qué tanto le puedo evaluar a cada sistema". | `/recommend` |
-| **Plan de evaluación por activo** | Skill que encadena las tools según el tipo de activo y el nivel de acceso, respetando Tier 1/Tier 2. | `swarm-orchestrator` |
+| **Plan de evaluación por activo** ✅ | Tool `eval_plan` + skill `appsec-plan`: encadena los huecos de `inventory view=next` en un plan ordenado por fases (superficie sin credenciales → código → configuración interna → aplicación autorizada). Cada paso trae su nivel (código/app/máquina), su Tier por defecto y el acceso que pide; `access=[...]` separa lo ejecutable ahora de lo que espera acceso, y la criticidad del activo ordena dentro de cada fase. No ejecuta: es el guion. | `swarm-orchestrator` |
 | **Revalidación no destructiva** | Repetir solo la verificación de un hallazgo (plantilla o regla puntual) para confirmar o descartar sin repetir toda la corrida. | `poc-validator` |
 | **Migraciones de esquema** | Versión del esquema en la BD y migraciones idempotentes. | `migrate.sh` |
 | **Modelo por skill** | Pista `model:` en skills que solo asesoran (planeación, mapeo, informe), para usar uno barato o local. | `-Lite` |

@@ -36,6 +36,7 @@ activan solas cuando pides algo de su área, o puedes invocarlas por nombre.
 | `appsec-triage` | Clasificar hallazgos con memoria entre corridas | transversal | — |
 | `appsec-fix` | Remediación guiada y verificación por diferencia | transversal | — |
 | `appsec-inventory` | Explorar sistemas y armar el ecosistema (tool `inventory`) | transversal | — |
+| `appsec-plan` | Plan de evaluación por activo: qué evaluar y en qué orden (tools `eval_plan`, `inventory view=next`) | transversal | — |
 
 ## Leyenda de estado
 
