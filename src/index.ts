@@ -885,7 +885,7 @@ server.registerTool(
         const last = s.lastRun ? `${s.lastRun.kind} · ${s.lastRun.target} (${s.lastRun.at.slice(0, 16).replace("T", " ")})` : "—";
         return text(
           [
-            `Inventario de Xolotl · motor ${s.engine}`,
+            `Inventario de Xolotl · motor ${s.engine} · esquema v${s.schemaVersion}`,
             `Corridas: ${s.runs} · Activos: ${s.assets} · Hallazgos activos: ${s.findingsActive} (total histórico ${s.findingsTotal})`,
             `Severidad: ${sev}`,
             `Categorías: ${cat}`,

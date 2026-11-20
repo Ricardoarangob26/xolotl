@@ -13,6 +13,9 @@ import type { Finding } from "./findings.js";
 import type { RunMeta } from "./store.js";
 import { criticalityOf, loadAssets } from "./assets.js";
 
+/** Versión del esquema del inventario. Subir aquí y añadir la migración correspondiente. */
+export const SCHEMA_VERSION = 2;
+
 export interface FindingRow {
   fingerprint: string;
   asset: string;
@@ -31,6 +34,7 @@ export interface FindingRow {
   first_run: string;
   last_run: string;
   runs: number;
+  risk_score?: number | null; // prioridad (0..100) de la última vez vista; v2 del esquema
 }
 
 export interface RunRow {
@@ -51,6 +55,7 @@ export interface Link {
 
 interface Backend {
   engine: "sqlite" | "json";
+  version: number;
   upsertFinding(row: FindingRow): void;
   insertRun(row: RunRow): void;
   linkRunFinding(l: Link): void;
@@ -91,23 +96,25 @@ function sqliteBackend(): Backend | null {
       CREATE INDEX IF NOT EXISTS idx_find_cat ON findings(category);
       CREATE INDEX IF NOT EXISTS idx_find_status ON findings(status);
     `);
+    const schemaVersion = migrateSqlite(db);
     const cols =
-      "fingerprint,asset,category,severity,rule_id,title,pkg_name,pkg_version,fixed_version,cve,tool_used,status,first_seen,last_seen,first_run,last_run,runs";
+      "fingerprint,asset,category,severity,rule_id,title,pkg_name,pkg_version,fixed_version,cve,tool_used,status,first_seen,last_seen,first_run,last_run,runs,risk_score";
     const up = db.prepare(
       `INSERT INTO findings (${cols}) VALUES (${cols.split(",").map(() => "?").join(",")})
        ON CONFLICT(fingerprint) DO UPDATE SET
          asset=excluded.asset, category=excluded.category, severity=excluded.severity,
          rule_id=excluded.rule_id, title=excluded.title, pkg_name=excluded.pkg_name,
          pkg_version=excluded.pkg_version, fixed_version=excluded.fixed_version, cve=excluded.cve,
-         tool_used=excluded.tool_used, status=excluded.status,
+         tool_used=excluded.tool_used, status=excluded.status, risk_score=excluded.risk_score,
          last_seen=excluded.last_seen, last_run=excluded.last_run, runs=excluded.runs`,
     );
     const insRun = db.prepare("INSERT OR REPLACE INTO runs (id,kind,target,started_at,finished_at,total) VALUES (?,?,?,?,?,?)");
     const insLink = db.prepare("INSERT OR REPLACE INTO run_findings (run_id,fingerprint,severity,status) VALUES (?,?,?,?)");
     const r2f = (r: FindingRow) =>
-      [r.fingerprint, r.asset, r.category, r.severity, r.rule_id, r.title, r.pkg_name, r.pkg_version, r.fixed_version, r.cve, r.tool_used, r.status, r.first_seen, r.last_seen, r.first_run, r.last_run, r.runs] as const;
+      [r.fingerprint, r.asset, r.category, r.severity, r.rule_id, r.title, r.pkg_name, r.pkg_version, r.fixed_version, r.cve, r.tool_used, r.status, r.first_seen, r.last_seen, r.first_run, r.last_run, r.runs, r.risk_score ?? null] as const;
     return {
       engine: "sqlite",
+      version: schemaVersion,
       upsertFinding: (r) => up.run(...r2f(r)),
       insertRun: (r) => insRun.run(r.id, r.kind, r.target, r.started_at, r.finished_at, r.total),
       linkRunFinding: (l) => insLink.run(l.run_id, l.fingerprint, l.severity, l.status),
@@ -128,9 +135,34 @@ interface SqliteDb {
   prepare(sql: string): { run: (...a: unknown[]) => unknown; all: (...a: unknown[]) => unknown[] };
 }
 
+/**
+ * Migraciones idempotentes del esquema SQLite, versionadas con PRAGMA user_version (lo nativo de
+ * SQLite). Cada paso sube de una versión a la siguiente y es seguro repetirlo: una BD nueva pasa
+ * por todas; una antigua solo por las que le faltan, sin perder datos. Devuelve la versión final.
+ */
+function migrateSqlite(db: SqliteDb): number {
+  const userVersion = () => Number((db.prepare("PRAGMA user_version").all()[0] as { user_version?: number })?.user_version ?? 0);
+  const columns = (table: string) => new Set((db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((r) => r.name));
+  let v = userVersion();
+
+  // v1: línea base (las tablas ya existen por el CREATE TABLE IF NOT EXISTS de arriba).
+  if (v < 1) {
+    db.exec("PRAGMA user_version = 1");
+    v = 1;
+  }
+  // v2: prioridad de riesgo recordada por hallazgo, para ordenar el inventario entre corridas.
+  if (v < 2) {
+    if (!columns("findings").has("risk_score")) db.exec("ALTER TABLE findings ADD COLUMN risk_score INTEGER");
+    db.exec("PRAGMA user_version = 2");
+    v = 2;
+  }
+  return v;
+}
+
 // ───────────────────────────── JSON (respaldo) ─────────────────────────────
 function jsonBackend(): Backend {
   interface Data {
+    schemaVersion?: number;
     runs: RunRow[];
     findings: Record<string, FindingRow>;
     links: Link[];
@@ -141,13 +173,18 @@ function jsonBackend(): Backend {
   } catch {
     /* primer uso */
   }
+  // El respaldo JSON no cambia de forma (los campos nuevos son opcionales); basta con sellar
+  // la versión para que `inventory` la muestre y las lecturas nuevas la asuman.
+  const fresh = data.schemaVersion !== SCHEMA_VERSION;
+  data.schemaVersion = SCHEMA_VERSION;
   const save = () => {
     ensureDirs();
     fs.writeFileSync(INVENTORY_FILE, JSON.stringify(data, null, 2));
   };
-  let dirty = false;
+  let dirty = fresh && (data.runs.length > 0 || Object.keys(data.findings).length > 0);
   return {
     engine: "json",
+    version: SCHEMA_VERSION,
     upsertFinding: (r) => {
       data.findings[r.fingerprint] = r;
       dirty = true;
@@ -231,6 +268,7 @@ export function recordRun(meta: RunMeta, findings: Finding[]): void {
         first_run: prev?.first_run ?? meta.id,
         last_run: meta.id,
         runs: (prev?.runs ?? 0) + 1,
+        risk_score: f.risk?.score ?? null,
       });
       b.linkRunFinding({ run_id: meta.id, fingerprint: f.fingerprint, severity: f.severity, status });
     }
@@ -299,7 +337,7 @@ export function queryFindings(opt: FindingFilter = {}): FindingRow[] {
   if (opt.seen === "latest") rows = rows.filter((r) => r.last_run === latest);
   if (opt.seen === "new") rows = rows.filter((r) => r.first_run === latest);
   if (opt.seen === "gone") rows = rows.filter((r) => r.last_run !== latest);
-  rows.sort((a, b2) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b2.severity) || b2.last_seen.localeCompare(a.last_seen));
+  rows.sort((a, b2) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b2.severity) || (b2.risk_score ?? 0) - (a.risk_score ?? 0) || b2.last_seen.localeCompare(a.last_seen));
   return opt.limit ? rows.slice(0, opt.limit) : rows;
 }
 
@@ -345,6 +383,7 @@ export function findingHistory(fingerprint: string): { finding?: FindingRow; tim
 
 export interface InventorySummary {
   engine: "sqlite" | "json";
+  schemaVersion: number;
   runs: number;
   assets: number;
   findingsActive: number;
@@ -367,6 +406,7 @@ export function inventorySummary(): InventorySummary {
   const last = b.allRuns().slice(-1)[0];
   return {
     engine: b.engine,
+    schemaVersion: b.version,
     runs: b.allRuns().length,
     assets: new Set(active.map((r) => r.asset)).size,
     findingsActive: active.length,

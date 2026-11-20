@@ -37272,6 +37272,7 @@ function criticalityOf(asset, db = loadAssets()) {
 }
 
 // src/inventory.ts
+var SCHEMA_VERSION = 2;
 function sqliteBackend() {
   const sqlite = process.getBuiltinModule?.("node:sqlite");
   if (!sqlite?.DatabaseSync) return null;
@@ -37298,21 +37299,23 @@ function sqliteBackend() {
       CREATE INDEX IF NOT EXISTS idx_find_cat ON findings(category);
       CREATE INDEX IF NOT EXISTS idx_find_status ON findings(status);
     `);
-    const cols = "fingerprint,asset,category,severity,rule_id,title,pkg_name,pkg_version,fixed_version,cve,tool_used,status,first_seen,last_seen,first_run,last_run,runs";
+    const schemaVersion = migrateSqlite(db);
+    const cols = "fingerprint,asset,category,severity,rule_id,title,pkg_name,pkg_version,fixed_version,cve,tool_used,status,first_seen,last_seen,first_run,last_run,runs,risk_score";
     const up = db.prepare(
       `INSERT INTO findings (${cols}) VALUES (${cols.split(",").map(() => "?").join(",")})
        ON CONFLICT(fingerprint) DO UPDATE SET
          asset=excluded.asset, category=excluded.category, severity=excluded.severity,
          rule_id=excluded.rule_id, title=excluded.title, pkg_name=excluded.pkg_name,
          pkg_version=excluded.pkg_version, fixed_version=excluded.fixed_version, cve=excluded.cve,
-         tool_used=excluded.tool_used, status=excluded.status,
+         tool_used=excluded.tool_used, status=excluded.status, risk_score=excluded.risk_score,
          last_seen=excluded.last_seen, last_run=excluded.last_run, runs=excluded.runs`
     );
     const insRun = db.prepare("INSERT OR REPLACE INTO runs (id,kind,target,started_at,finished_at,total) VALUES (?,?,?,?,?,?)");
     const insLink = db.prepare("INSERT OR REPLACE INTO run_findings (run_id,fingerprint,severity,status) VALUES (?,?,?,?)");
-    const r2f = (r) => [r.fingerprint, r.asset, r.category, r.severity, r.rule_id, r.title, r.pkg_name, r.pkg_version, r.fixed_version, r.cve, r.tool_used, r.status, r.first_seen, r.last_seen, r.first_run, r.last_run, r.runs];
+    const r2f = (r) => [r.fingerprint, r.asset, r.category, r.severity, r.rule_id, r.title, r.pkg_name, r.pkg_version, r.fixed_version, r.cve, r.tool_used, r.status, r.first_seen, r.last_seen, r.first_run, r.last_run, r.runs, r.risk_score ?? null];
     return {
       engine: "sqlite",
+      version: schemaVersion,
       upsertFinding: (r) => up.run(...r2f(r)),
       insertRun: (r) => insRun.run(r.id, r.kind, r.target, r.started_at, r.finished_at, r.total),
       linkRunFinding: (l) => insLink.run(l.run_id, l.fingerprint, l.severity, l.status),
@@ -37327,19 +37330,37 @@ function sqliteBackend() {
     return null;
   }
 }
+function migrateSqlite(db) {
+  const userVersion = () => Number(db.prepare("PRAGMA user_version").all()[0]?.user_version ?? 0);
+  const columns = (table) => new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((r) => r.name));
+  let v = userVersion();
+  if (v < 1) {
+    db.exec("PRAGMA user_version = 1");
+    v = 1;
+  }
+  if (v < 2) {
+    if (!columns("findings").has("risk_score")) db.exec("ALTER TABLE findings ADD COLUMN risk_score INTEGER");
+    db.exec("PRAGMA user_version = 2");
+    v = 2;
+  }
+  return v;
+}
 function jsonBackend() {
   let data = { runs: [], findings: {}, links: [] };
   try {
     data = { runs: [], findings: {}, links: [], ...JSON.parse(fs7.readFileSync(INVENTORY_FILE, "utf8")) };
   } catch {
   }
+  const fresh = data.schemaVersion !== SCHEMA_VERSION;
+  data.schemaVersion = SCHEMA_VERSION;
   const save2 = () => {
     ensureDirs();
     fs7.writeFileSync(INVENTORY_FILE, JSON.stringify(data, null, 2));
   };
-  let dirty = false;
+  let dirty = fresh && (data.runs.length > 0 || Object.keys(data.findings).length > 0);
   return {
     engine: "json",
+    version: SCHEMA_VERSION,
     upsertFinding: (r) => {
       data.findings[r.fingerprint] = r;
       dirty = true;
@@ -37416,7 +37437,8 @@ function recordRun(meta3, findings) {
         last_seen: when,
         first_run: prev?.first_run ?? meta3.id,
         last_run: meta3.id,
-        runs: (prev?.runs ?? 0) + 1
+        runs: (prev?.runs ?? 0) + 1,
+        risk_score: f.risk?.score ?? null
       });
       b.linkRunFinding({ run_id: meta3.id, fingerprint: f.fingerprint, severity: f.severity, status });
     }
@@ -37461,7 +37483,7 @@ function queryFindings(opt = {}) {
   if (opt.seen === "latest") rows = rows.filter((r) => r.last_run === latest);
   if (opt.seen === "new") rows = rows.filter((r) => r.first_run === latest);
   if (opt.seen === "gone") rows = rows.filter((r) => r.last_run !== latest);
-  rows.sort((a, b2) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b2.severity) || b2.last_seen.localeCompare(a.last_seen));
+  rows.sort((a, b2) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b2.severity) || (b2.risk_score ?? 0) - (a.risk_score ?? 0) || b2.last_seen.localeCompare(a.last_seen));
   return opt.limit ? rows.slice(0, opt.limit) : rows;
 }
 function listAssets() {
@@ -37502,6 +37524,7 @@ function inventorySummary() {
   const last = b.allRuns().slice(-1)[0];
   return {
     engine: b.engine,
+    schemaVersion: b.version,
     runs: b.allRuns().length,
     assets: new Set(active.map((r) => r.asset)).size,
     findingsActive: active.length,
@@ -41365,7 +41388,7 @@ server.registerTool(
         const last = s.lastRun ? `${s.lastRun.kind} \xB7 ${s.lastRun.target} (${s.lastRun.at.slice(0, 16).replace("T", " ")})` : "\u2014";
         return text(
           [
-            `Inventario de Xolotl \xB7 motor ${s.engine}`,
+            `Inventario de Xolotl \xB7 motor ${s.engine} \xB7 esquema v${s.schemaVersion}`,
             `Corridas: ${s.runs} \xB7 Activos: ${s.assets} \xB7 Hallazgos activos: ${s.findingsActive} (total hist\xF3rico ${s.findingsTotal})`,
             `Severidad: ${sev}`,
             `Categor\xEDas: ${cat}`,
