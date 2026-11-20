@@ -40673,6 +40673,76 @@ function parseAdCollected(text2, fallbackDomain = "dominio") {
   return { findings: out, domain: domain2 };
 }
 
+// src/k8s.ts
+function k8sAdvisory(target) {
+  return [
+    `## Tier 1 \xB7 advisory \u2014 postura de Kubernetes con kube-bench (CIS)${target ? ` \xB7 ${target}` : ""}`,
+    "kube-bench comprueba el cl\xFAster contra el CIS Kubernetes Benchmark. Solo lee; no cambia nada.",
+    "",
+    "Opci\xF3n A \u2014 cl\xFAster gestionado (AKS, EKS, GKE) o sin acceso a los nodos: c\xF3rrelo como Job.",
+    "  kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml",
+    "  kubectl wait --for=condition=complete job/kube-bench --timeout=120s",
+    "  kubectl logs job/kube-bench > kube-bench.json   # el Job ya corre con --json",
+    "  kubectl delete job kube-bench",
+    "  (en AKS solo aplican los controles de nodo; el plano de control es gestionado por Azure.)",
+    "",
+    "Opci\xF3n B \u2014 tienes acceso al nodo (binario):",
+    "  kube-bench run --targets node --json --outputfile kube-bench.json",
+    "",
+    'Si el Job no sale en JSON, fuerza la bandera en su contenedor: command: ["kube-bench","--json"].',
+    "",
+    "Volver: scan_k8s con collected_file=<ruta de kube-bench.json>."
+  ].join("\n");
+}
+function parseKubeBench(text2, cluster = "cluster") {
+  let data;
+  try {
+    data = JSON.parse(text2);
+  } catch {
+    throw new Error("El archivo no es un JSON v\xE1lido de kube-bench. Gen\xE9ralo con kube-bench --json (o el Job con --json).");
+  }
+  const controls = Array.isArray(data) ? data : data.Controls ?? [];
+  if (!controls.length) throw new Error("No se encontraron controles en el JSON. \xBFEs la salida de kube-bench --json?");
+  const findings = [];
+  const totals = { pass: 0, fail: 0, warn: 0, info: 0 };
+  const seen = /* @__PURE__ */ new Set();
+  for (const c of controls) {
+    for (const t of c.tests ?? []) {
+      for (const r of t.results ?? []) {
+        const status = String(r.status ?? "").toUpperCase();
+        if (status === "PASS") {
+          totals.pass++;
+          continue;
+        }
+        if (status === "INFO") {
+          totals.info++;
+          continue;
+        }
+        const isFail = status === "FAIL";
+        if (isFail) totals.fail++;
+        else if (status === "WARN") totals.warn++;
+        else continue;
+        const num = r.test_number || `${t.section ?? "?"}`;
+        const rule = `CIS-K8S-${num}`;
+        if (seen.has(rule)) continue;
+        seen.add(rule);
+        const severity = isFail ? "medium" : "low";
+        findings.push({
+          tool: "kube-bench",
+          category: "config",
+          severity,
+          ruleId: rule,
+          title: `${num} ${r.test_desc ?? t.desc ?? "control CIS"}`.trim(),
+          description: `CIS Kubernetes Benchmark${c.node_type ? ` \xB7 ${c.node_type}` : ""}${isFail ? " \xB7 FAIL" : " \xB7 WARN (requiere revisi\xF3n manual)"}${r.scored === false ? " \xB7 no puntuado" : ""}.`,
+          remediation: r.remediation?.replace(/\s+/g, " ").trim() || void 0,
+          location: { target: cluster }
+        });
+      }
+    }
+  }
+  return { findings, totals, cluster };
+}
+
 // src/tier.ts
 var defaultMode = () => (process.env.XOLOTL_MODE ?? "").trim().toLowerCase() === "advisory" ? "advisory" : "execute";
 var resolveMode = (requested) => requested ?? defaultMode();
@@ -41439,6 +41509,35 @@ server.registerTool(
       const { meta: meta3 } = newRun("ad", parsed.domain, { source: file2 });
       const o = {
         run: { tool: "ad-audit", status: "ok", count: parsed.findings.length, message: `dominio ${parsed.domain}` },
+        findings: parsed.findings
+      };
+      return text(await finishRun(meta3, [o], null));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
+  "scan_k8s",
+  {
+    title: "Postura de Kubernetes (CIS / kube-bench)",
+    description: "Eval\xFAa un cl\xFAster de Kubernetes contra el CIS Kubernetes Benchmark con kube-bench, con una ejecuci\xF3n de SOLO LECTURA. No se conecta ni instala nada: en modo advisory entrega c\xF3mo correr kube-bench (como Job dentro del cl\xFAster \u2014sirve para AKS/EKS/GKE gestionados\u2014 o como binario en un nodo) con salida JSON, y con collected_file parsea ese JSON a hallazgos. Los FAIL son medium y los WARN (revisi\xF3n manual) low.",
+    inputSchema: {
+      collected_file: external_exports.string().optional().describe("Archivo JSON de kube-bench (kube-bench --json)"),
+      target: external_exports.string().optional().describe("Nombre del cl\xFAster para el inventario")
+    },
+    annotations: { readOnlyHint: true }
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(k8sAdvisory(a.target));
+      const file2 = path13.resolve(a.collected_file);
+      if (!fs16.existsSync(file2)) return fail(`No existe ${file2}`);
+      const cluster = a.target?.trim() || "cluster";
+      const parsed = parseKubeBench(fs16.readFileSync(file2, "utf8"), cluster);
+      const { meta: meta3 } = newRun("k8s", cluster, { source: file2, totals: parsed.totals });
+      const o = {
+        run: { tool: "kube-bench", status: "ok", count: parsed.findings.length, message: `CIS: ${parsed.totals.fail} FAIL \xB7 ${parsed.totals.warn} WARN \xB7 ${parsed.totals.pass} PASS` },
         findings: parsed.findings
       };
       return text(await finishRun(meta3, [o], null));

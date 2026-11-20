@@ -35,6 +35,7 @@ import { untrustedSection } from "./untrusted.js";
 import { advisoryLynis, parseLynisReport, runLynisViaSsh } from "./lynis.js";
 import { dbAdvisory, parseDbCollected } from "./db.js";
 import { adAdvisory, parseAdCollected } from "./ad.js";
+import { k8sAdvisory, parseKubeBench } from "./k8s.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -554,6 +555,37 @@ server.registerTool(
       const { meta } = newRun("ad", parsed.domain, { source: file });
       const o: Outcome = {
         run: { tool: "ad-audit", status: "ok", count: parsed.findings.length, message: `dominio ${parsed.domain}` },
+        findings: parsed.findings,
+      };
+      return text(await finishRun(meta, [o], null));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "scan_k8s",
+  {
+    title: "Postura de Kubernetes (CIS / kube-bench)",
+    description:
+      "Evalúa un clúster de Kubernetes contra el CIS Kubernetes Benchmark con kube-bench, con una ejecución de SOLO LECTURA. No se conecta ni instala nada: en modo advisory entrega cómo correr kube-bench (como Job dentro del clúster —sirve para AKS/EKS/GKE gestionados— o como binario en un nodo) con salida JSON, y con collected_file parsea ese JSON a hallazgos. Los FAIL son medium y los WARN (revisión manual) low.",
+    inputSchema: {
+      collected_file: z.string().optional().describe("Archivo JSON de kube-bench (kube-bench --json)"),
+      target: z.string().optional().describe("Nombre del clúster para el inventario"),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(k8sAdvisory(a.target));
+      const file = path.resolve(a.collected_file);
+      if (!fs.existsSync(file)) return fail(`No existe ${file}`);
+      const cluster = a.target?.trim() || "cluster";
+      const parsed = parseKubeBench(fs.readFileSync(file, "utf8"), cluster);
+      const { meta } = newRun("k8s", cluster, { source: file, totals: parsed.totals });
+      const o: Outcome = {
+        run: { tool: "kube-bench", status: "ok", count: parsed.findings.length, message: `CIS: ${parsed.totals.fail} FAIL · ${parsed.totals.warn} WARN · ${parsed.totals.pass} PASS` },
         findings: parsed.findings,
       };
       return text(await finishRun(meta, [o], null));

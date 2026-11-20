@@ -89,8 +89,8 @@ que tú entregas; lo que toca un sistema vivo respeta Tier 1/Tier 2 y el alcance
 |---|---|---|
 | Discos de VM sin encenderlas | `trivy vm` (VMDK, AMI, snapshots EBS) | Credenciales / archivo de disco |
 | Benchmarks CIS/STIG formales | ✅ **Lynis** (`scan_lynis`): índice de endurecimiento + avisos/sugerencias, Tier 1 (informe a mano, flujo MobaXterm) o Tier 2 (SSH). Pendiente: OpenSCAP (RHEL) y salida en formato STIG con justificaciones | Usuario de lectura |
-| Nube: plano de control | Prowler con rol de solo lectura | Usuario de lectura |
-| Kubernetes: postura | kube-bench (CIS) + Kubescape (NSA/MITRE) | Usuario de lectura (kubeconfig RO) |
+| Nube: plano de control | **Azure** con Prowler (rol de solo lectura; Prowler cubre Azure/AWS/GCP). **Oracle Cloud (OCI)**: su propio benchmark CIS (OCI CIS / `cloudguard`), ya que Prowler no cubre OCI | Usuario de lectura |
+| Kubernetes: postura | ✅ `scan_k8s` (kube-bench, CIS): nodo/kubelet, RBAC y políticas, Tier 1 (Job para AKS/EKS/GKE o binario). Pendiente: Kubescape (NSA/MITRE) para análisis más profundo | Usuario de lectura (kubeconfig RO) |
 | Windows Server | Inventario por WinRM + HardeningKitty | Credenciales |
 | Directorio Activo: postura | ✅ `scan_ad` (solo lectura, PowerShell): política de contraseñas vs NIST/CIS, cuentas privilegiadas, delegación sin restricción, Kerberoasting/AS-REP, krbtgt, MachineAccountQuota, cuentas inactivas (estilo PingCastle). Los hallazgos Kerberos mapean a ATT&CK T1558. Pendiente: enumeración de ACL riesgosas objeto por objeto | Usuario de lectura del dominio |
 | Bases de datos: configuración | ✅ **PostgreSQL y MySQL/MariaDB** (`scan_db`): cifrado (TLS), autenticación (pg_hba / cuentas sin contraseña, anónimas, plugin débil), exposición de red, cuentas privilegiadas y auditoría — con cuenta RO, Tier 1. Pendiente: SQL Server (mismo armazón) | Usuario de lectura |
@@ -193,7 +193,7 @@ referencia histórica.
 | Orquestación (`swarm-orchestrator`) | ✅ `eval_plan` + skill `appsec-plan` | 🧩 |
 | Cumplimiento (`compliance-mapper`, `stig-analyst`) | ✅ mapeo a 5 marcos (OWASP/PCI/NIST/ISO/CIS) | 🔵 STIG/CIS formales (Fase 2) |
 | Planeación (`engagement-planner`, `attack-planner`) | ✅ `engagement` (reglas de enfrentamiento) + mapeo ATT&CK | — |
-| Nube y contenedores (`cloud-security`, `container-breakout`) | 🟡 imágenes e IaC | 🔵 Prowler + Kubernetes (Fase 2) |
+| Nube y contenedores (`cloud-security`, `container-breakout`) | ✅ `scan_k8s` (Kubernetes CIS) + imágenes e IaC | 🔵 Prowler (Azure) + OCI CIS (Fase 2) |
 | Directorio Activo (`ad-attacker`, `password-auditor`) | ✅ `scan_ad` (postura de solo lectura) | 🔴 validación (Fase 5) |
 | Escalada de privilegios (`privesc-advisor`) | 🟡 SUID/sudoers/kernel en `scan_host` | 🔴 rutas demostrables (Fase 5) |
 | Cadena de suministro y CI/CD (`supply-chain-auditor`, `cicd-redteam`) | 🟡 SCA | 🔵 Fase 2.5 |
