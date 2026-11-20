@@ -45,7 +45,7 @@ copiar agentes, sino que cada dominio defensivo o de evaluación tenga motor, sk
 | Código (`code-auditor`) | ✅ `scan_static`, `scan_codeql` | — |
 | Vulnerabilidades (`vuln-scanner`) | ✅ `scan_network`, `scan_dast`, `scan_host` | — |
 | Verificación de arreglos (`fix-verifier`) | ✅ `runs_diff` + `appsec-fix` | — |
-| Informes (`report-generator`) | ✅ `report_generate` (técnico) | Resumen ejecutivo → Fase 1.5 |
+| Informes (`report-generator`) | ✅ `report_generate` (técnico + resumen ejecutivo) | — |
 | Memoria (`/memory`, `findings.sh`, `doctor.sh`) | ✅ BD SQLite, `inventory`, `xolotl_doctor` | Traspaso de compromiso → Fase 1.5 |
 | Recomendación (`/recommend`, `/agents-for`) | ✅ `inventory view=next` propone qué evaluar por activo | — |
 | Puntuación de riesgo (`risk-scorer`) | ✅ EPSS + CISA KEV sobre la severidad (`risk_feeds`) | — |
@@ -82,7 +82,7 @@ Es lo más barato y lo que más valor agrega: todo lo que ya se escanea gana con
 | **Mapeo a marcos** | De CWE/regla a PCI DSS 4.0, NIST 800-53/CSF 2.0, ISO 27001:2022, CIS Controls v8 y OWASP Top 10/ASVS. Informe de brechas por control en `report_generate`. | `compliance-mapper` |
 | **Mapeo a MITRE ATT&CK** | Técnica asociada por hallazgo (útil para detección y para planear). | `engagement-planner` |
 | **Plan de compromiso** | Skill `appsec-engagement`: reglas de enfrentamiento, alcance y ventanas sobre `dast_scope`, con plantilla exportable. | `engagement-planner` |
-| **Resumen ejecutivo** | Sección de negocio en el informe: tendencia (nuevos/persistentes), top de riesgo, avance de remediación. | `report-generator` |
+| **Resumen ejecutivo** ✅ | Sección de negocio al inicio del informe (MD y HTML): postura general (activos y crít./altos), explotabilidad real (KEV y EPSS ≥ 10%), hallazgos sobre activos de criticidad de negocio, tendencia frente a la corrida anterior del mismo objetivo (resueltos/nuevos/persisten: mejoró/empeoró/se mantuvo), avance de remediación y "lo más urgente". El HTML añade una tira de KPIs. | `report-generator` |
 | **Traspaso de compromiso** ✅ | Tool `handoff` (export/import): un archivo JSON con alcance, triage, criticidad de activos, inventario acumulado y los artefactos de cada corrida, para retomar en otra sesión o máquina (fusión o reemplazo). No incluye los feeds (se rebajan con `risk_feeds`). | `handoff.sh` |
 | **Siguiente paso sugerido** ✅ | `inventory view=next`: por activo, infiere su tipo (host, web, código, imagen), muestra una matriz de cobertura (qué pruebas aplican y cuáles ya corrieron) y propone las que faltan con su nivel (código/app/máquina) y el acceso que necesitan. Lee señales del propio inventario —puertos abiertos del hallazgo de red, p. ej. "puerto web 8080 abierto y sin DAST"; "host sin revisión de configuración"; "SAST hecho, falta CodeQL/IaC"— y ordena por criticidad del activo. Es el mapa de "qué tanto le puedo evaluar a cada sistema". | `/recommend` |
 | **Plan de evaluación por activo** ✅ | Tool `eval_plan` + skill `appsec-plan`: encadena los huecos de `inventory view=next` en un plan ordenado por fases (superficie sin credenciales → código → configuración interna → aplicación autorizada). Cada paso trae su nivel (código/app/máquina), su Tier por defecto y el acceso que pide; `access=[...]` separa lo ejecutable ahora de lo que espera acceso, y la criticidad del activo ordena dentro de cada fase. No ejecuta: es el guion. | `swarm-orchestrator` |

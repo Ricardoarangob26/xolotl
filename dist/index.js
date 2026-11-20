@@ -37839,6 +37839,96 @@ var STATUS_ES = {
 };
 var fence = (s) => "```\n" + s.replace(/```/g, "\u02CB\u02CB\u02CB") + "\n```";
 var trunc = (s, n) => !s ? "" : s.length > n ? s.slice(0, n) + "\u2026" : s;
+var EPSS_HIGH = 0.1;
+function assetKey(f, meta3) {
+  const l = f.location ?? {};
+  if (l.target) return l.target;
+  if (l.url) {
+    try {
+      return new URL(l.url).host;
+    } catch {
+      return l.url;
+    }
+  }
+  return l.file ?? meta3.target;
+}
+function topUrgent(active, n = 3) {
+  const enriched = topByRisk(active, n);
+  if (enriched.length) return enriched;
+  return active.slice().sort((a, b) => sevRank(b.severity) - sevRank(a.severity) || (b.cvss?.score ?? 0) - (a.cvss?.score ?? 0) || a.id.localeCompare(b.id)).slice(0, n);
+}
+function urgencyLabel(f) {
+  if (riskEnriched(f)) return `riesgo ${f.risk.score}/100`;
+  if (f.cvss) return `CVSS ${f.cvss.score}`;
+  return SEV_ES[f.severity];
+}
+function computeTrend(active, prev) {
+  if (!prev) return null;
+  const prevActive = prev.findings.filter((f) => !isSuppressed(f));
+  const curFp = new Set(active.map((f) => f.fingerprint));
+  const prevFp = new Set(prevActive.map((f) => f.fingerprint));
+  return {
+    prevId: prev.meta.id,
+    added: active.filter((f) => !prevFp.has(f.fingerprint)).length,
+    resolved: prevActive.filter((f) => !curFp.has(f.fingerprint)).length,
+    kept: active.filter((f) => prevFp.has(f.fingerprint)).length
+  };
+}
+function buildExecSummary(meta3, findings, prev) {
+  const active = findings.filter((f) => !isSuppressed(f));
+  const suppressed = findings.filter(isSuppressed);
+  const crit = active.filter((f) => f.severity === "critical").length;
+  const high = active.filter((f) => f.severity === "high").length;
+  const remediation = { fixed: 0, accepted: 0, fp: 0 };
+  for (const f of suppressed) {
+    if (f.triage.status === "fixed") remediation.fixed++;
+    else if (f.triage.status === "accepted_risk") remediation.accepted++;
+    else if (f.triage.status === "false_positive") remediation.fp++;
+  }
+  return {
+    total: active.length,
+    crit,
+    high,
+    openCritHigh: crit + high,
+    kev: active.filter((f) => f.risk?.kev).length,
+    highEpss: active.filter((f) => (f.risk?.epss ?? 0) >= EPSS_HIGH).length,
+    bizCritical: active.filter((f) => f.risk?.assetCriticality === "critica" || f.risk?.assetCriticality === "alta").length,
+    assets: new Set(active.map((f) => assetKey(f, meta3))).size,
+    remediation,
+    trend: computeTrend(active, prev),
+    top: topUrgent(active, 3)
+  };
+}
+function trendPhrase(t) {
+  const dir = t.added > t.resolved ? "empeor\xF3" : t.resolved > t.added ? "mejor\xF3" : "se mantuvo";
+  return `Frente a la corrida anterior (\`${t.prevId}\`) la postura **${dir}**: ${t.resolved} resuelto(s), ${t.added} nuevo(s), ${t.kept} persisten.`;
+}
+function execLines(e) {
+  const out = ["## Resumen ejecutivo", ""];
+  if (e.total === 0) {
+    out.push("No hay hallazgos activos en esta corrida.");
+    if (e.trend) out.push("", trendPhrase(e.trend));
+    if (e.remediation.fixed || e.remediation.accepted) out.push("", `Remediaci\xF3n: ${e.remediation.fixed} corregido(s), ${e.remediation.accepted} con riesgo aceptado.`);
+    out.push("");
+    return out;
+  }
+  const foco = e.openCritHigh ? `${e.openCritHigh} requiere(n) atenci\xF3n prioritaria (${e.crit} cr\xEDtico(s), ${e.high} alto(s))` : "ninguno es cr\xEDtico ni alto";
+  out.push(`Se evaluaron **${e.assets}** activo(s) y hay **${e.total}** hallazgo(s) activo(s); ${foco}.`);
+  const expl = [];
+  if (e.kev) expl.push(`**${e.kev}** en explotaci\xF3n activa (CISA KEV)`);
+  if (e.highEpss) expl.push(`**${e.highEpss}** con alta probabilidad de explotaci\xF3n (EPSS \u2265 10%)`);
+  if (expl.length) out.push("", `Explotabilidad real: ${expl.join(" y ")} \u2014 son los que conviene remediar primero.`);
+  if (e.bizCritical) out.push("", `**${e.bizCritical}** afecta(n) a activos de criticidad de negocio alta o cr\xEDtica.`);
+  if (e.trend) out.push("", trendPhrase(e.trend));
+  const rem = e.remediation;
+  if (rem.fixed || rem.accepted || rem.fp) out.push("", `Avance de remediaci\xF3n: ${rem.fixed} corregido(s), ${rem.accepted} con riesgo aceptado, ${rem.fp} descartado(s) como falso positivo.`);
+  if (e.top.length) {
+    out.push("", "**Lo m\xE1s urgente:**");
+    for (const f of e.top) out.push(`- ${f.id} \xB7 ${urgencyLabel(f)} \xB7 ${trunc(f.title, 90)}`);
+  }
+  out.push("");
+  return out;
+}
 function details(f) {
   const rows = [];
   rows.push(`- **Categor\xEDa:** ${CAT_ES[f.category]} \xB7 **Herramienta:** ${f.tools.join(", ")} \xB7 **Regla:** \`${f.ruleId}\``);
@@ -37851,14 +37941,15 @@ function details(f) {
   if (f.triage) rows.push(`- **Estado:** ${STATUS_ES[f.triage.status]}${f.triage.note ? ` \u2014 ${f.triage.note}` : ""}`);
   return rows;
 }
-function toMarkdown(meta3, findings, includeSuppressed) {
+function toMarkdown(meta3, findings, includeSuppressed, prev) {
   const s = meta3.summary;
   const active = findings.filter((f) => !isSuppressed(f));
   const suppressed = findings.filter(isSuppressed);
   const out = [];
   out.push(`# Informe de seguridad \u2014 ${meta3.target}`, "");
   out.push(`Corrida \`${meta3.id}\` \xB7 ${meta3.kind} \xB7 ${meta3.startedAt.replace("T", " ").slice(0, 16)} UTC`, "");
-  out.push("## Resumen", "");
+  out.push(...execLines(buildExecSummary(meta3, findings, prev)));
+  out.push("## Resumen t\xE9cnico", "");
   out.push("| Severidad | Hallazgos |", "|---|---:|");
   for (const sev of SEVERITIES) out.push(`| ${SEV_ES[sev]} | ${s.bySeverity[sev]} |`);
   out.push(`| **Total activos** | **${s.total}** |`, "");
@@ -37894,7 +37985,22 @@ function toMarkdown(meta3, findings, includeSuppressed) {
   return out.join("\n");
 }
 var esc2 = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-function toHtml(meta3, findings, includeSuppressed) {
+function execHtml(e) {
+  const lines = execLines(e).slice(2).filter((l) => l !== "" && l !== "## Resumen ejecutivo").map((l) => {
+    const html = esc2(l.replace(/^- /, "")).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>");
+    return l.startsWith("- ") ? `<li>${html}</li>` : l.startsWith("**Lo m\xE1s urgente:**") ? `<p><b>Lo m\xE1s urgente:</b></p><ul>` : `<p>${html}</p>`;
+  });
+  const body = lines.join("\n") + (lines.some((l) => l.includes("<ul>")) ? "</ul>" : "");
+  const kpis = [
+    { n: e.total, l: "Hallazgos activos" },
+    { n: e.openCritHigh, l: "Cr\xEDt./altos" },
+    { n: e.kev, l: "En KEV" },
+    { n: e.highEpss, l: "EPSS \u2265 10%" }
+  ];
+  const strip = kpis.map((k) => `<div class="kpi"><b>${k.n}</b><span>${k.l}</span></div>`).join("");
+  return `<section class="exec"><h2>Resumen ejecutivo</h2><div class="kpis">${strip}</div>${body}</section>`;
+}
+function toHtml(meta3, findings, includeSuppressed, prev) {
   const s = meta3.summary;
   const active = findings.filter((f) => !isSuppressed(f));
   const cards = active.map((f) => {
@@ -37923,8 +38029,11 @@ table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0 20px;displ
 .f{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;margin:8px 0;padding:8px 12px}.f summary{cursor:pointer;font-weight:600}
 .sev{color:var(--c);font-size:12px;text-transform:uppercase;margin-right:8px}.id{color:var(--mut);font-family:ui-monospace,monospace;font-size:12px;margin-right:8px}
 pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;overflow-x:auto;font-size:12px;white-space:pre-wrap;word-break:break-word}code{font-size:12px;word-break:break-all}ul{padding-left:18px}
+.exec{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--low);border-radius:8px;padding:4px 16px 12px;margin:20px 0}.exec h2{margin:12px 0 4px}.exec p{margin:8px 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin:12px 0}.kpi{text-align:center;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px}.kpi b{display:block;font-size:22px}.kpi span{color:var(--mut);font-size:11px}
 </style></head><body><main>
 <h1>Informe de seguridad \u2014 ${esc2(meta3.target)}</h1><div class="meta">Corrida ${esc2(meta3.id)} \xB7 ${esc2(meta3.kind)} \xB7 ${meta3.startedAt.replace("T", " ").slice(0, 16)} UTC \xB7 ${s.total} hallazgos activos${s.suppressed ? `, ${s.suppressed} descartados` : ""}</div>
+${execHtml(buildExecSummary(meta3, findings, prev))}
 <div class="tiles">${tiles}</div>
 <h2>Herramientas</h2><table><tr><th>Herramienta</th><th>Versi\xF3n</th><th>Estado</th><th>Hallazgos</th><th>Nota</th></tr>${tools}</table>
 ${priorityRows ? `<h2>Prioridad por riesgo</h2><p class="meta">Orden por explotabilidad real (EPSS/CISA KEV), no solo por severidad.</p><table><tr><th>#</th><th>Riesgo</th><th>Severidad</th><th>Hallazgo</th><th>D\xF3nde</th></tr>${priorityRows}</table>` : ""}
@@ -40757,7 +40866,17 @@ server.registerTool(
       const { meta: meta3, findings } = loadRun(a.run_id);
       const fmt = a.format ?? "md";
       const incl = a.include_suppressed ?? true;
-      const body = fmt === "md" ? toMarkdown(meta3, findings, incl) : fmt === "html" ? toHtml(meta3, findings, incl) : JSON.stringify(fmt === "sarif" ? toSarif(meta3, findings) : { meta: meta3, findings }, null, 2);
+      let prev;
+      if (fmt === "md" || fmt === "html") {
+        const prior = listRuns(200).find((r) => r.id !== meta3.id && r.target === meta3.target && r.kind === meta3.kind && r.startedAt < meta3.startedAt);
+        if (prior) {
+          try {
+            prev = loadRun(prior.id);
+          } catch {
+          }
+        }
+      }
+      const body = fmt === "md" ? toMarkdown(meta3, findings, incl, prev) : fmt === "html" ? toHtml(meta3, findings, incl, prev) : JSON.stringify(fmt === "sarif" ? toSarif(meta3, findings) : { meta: meta3, findings }, null, 2);
       const file2 = path12.resolve(a.output_path ?? path12.join(runDir(meta3.id), `informe.${fmt}`));
       fs14.mkdirSync(path12.dirname(file2), { recursive: true });
       fs14.writeFileSync(file2, body);

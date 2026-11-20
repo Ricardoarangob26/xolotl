@@ -1,4 +1,4 @@
-import { CATEGORIES, Finding, SEVERITIES, where } from "./findings.js";
+import { CATEGORIES, Finding, SEVERITIES, sevRank, where } from "./findings.js";
 import { isSuppressed, RunMeta } from "./store.js";
 
 /** ¿La prioridad aporta algo más allá de la severidad? (feeds o criticidad del activo) */
@@ -42,6 +42,137 @@ const STATUS_ES: Record<string, string> = {
 const fence = (s: string) => "```\n" + s.replace(/```/g, "ˋˋˋ") + "\n```";
 const trunc = (s: string | undefined, n: number) => (!s ? "" : s.length > n ? s.slice(0, n) + "…" : s);
 
+// ───────────────────────────── Resumen ejecutivo (capa de negocio) ─────────────────────────────
+
+export interface PriorRun {
+  meta: RunMeta;
+  findings: Finding[];
+}
+
+interface Trend {
+  prevId: string;
+  resolved: number;
+  added: number;
+  kept: number;
+}
+
+export interface ExecSummary {
+  total: number;
+  crit: number;
+  high: number;
+  openCritHigh: number;
+  kev: number;
+  highEpss: number;
+  bizCritical: number;
+  assets: number;
+  remediation: { fixed: number; accepted: number; fp: number };
+  trend: Trend | null;
+  top: Finding[];
+}
+
+const EPSS_HIGH = 0.1; // 10%: umbral habitual para "alta probabilidad de explotación".
+
+function assetKey(f: Finding, meta: RunMeta): string {
+  const l = f.location ?? {};
+  if (l.target) return l.target;
+  if (l.url) {
+    try {
+      return new URL(l.url).host;
+    } catch {
+      return l.url;
+    }
+  }
+  return l.file ?? meta.target;
+}
+
+/** Lo más urgente: por prioridad de riesgo si hay feeds/criticidad; si no, por severidad y CVSS. */
+function topUrgent(active: Finding[], n = 3): Finding[] {
+  const enriched = topByRisk(active, n);
+  if (enriched.length) return enriched;
+  return active
+    .slice()
+    .sort((a, b) => sevRank(b.severity) - sevRank(a.severity) || (b.cvss?.score ?? 0) - (a.cvss?.score ?? 0) || a.id.localeCompare(b.id))
+    .slice(0, n);
+}
+
+/** Etiqueta de urgencia de un hallazgo: riesgo priorizado, o CVSS, o severidad. */
+function urgencyLabel(f: Finding): string {
+  if (riskEnriched(f)) return `riesgo ${f.risk!.score}/100`;
+  if (f.cvss) return `CVSS ${f.cvss.score}`;
+  return SEV_ES[f.severity];
+}
+
+function computeTrend(active: Finding[], prev?: PriorRun): Trend | null {
+  if (!prev) return null;
+  const prevActive = prev.findings.filter((f) => !isSuppressed(f));
+  const curFp = new Set(active.map((f) => f.fingerprint));
+  const prevFp = new Set(prevActive.map((f) => f.fingerprint));
+  return {
+    prevId: prev.meta.id,
+    added: active.filter((f) => !prevFp.has(f.fingerprint)).length,
+    resolved: prevActive.filter((f) => !curFp.has(f.fingerprint)).length,
+    kept: active.filter((f) => prevFp.has(f.fingerprint)).length,
+  };
+}
+
+export function buildExecSummary(meta: RunMeta, findings: Finding[], prev?: PriorRun): ExecSummary {
+  const active = findings.filter((f) => !isSuppressed(f));
+  const suppressed = findings.filter(isSuppressed);
+  const crit = active.filter((f) => f.severity === "critical").length;
+  const high = active.filter((f) => f.severity === "high").length;
+  const remediation = { fixed: 0, accepted: 0, fp: 0 };
+  for (const f of suppressed) {
+    if (f.triage!.status === "fixed") remediation.fixed++;
+    else if (f.triage!.status === "accepted_risk") remediation.accepted++;
+    else if (f.triage!.status === "false_positive") remediation.fp++;
+  }
+  return {
+    total: active.length,
+    crit,
+    high,
+    openCritHigh: crit + high,
+    kev: active.filter((f) => f.risk?.kev).length,
+    highEpss: active.filter((f) => (f.risk?.epss ?? 0) >= EPSS_HIGH).length,
+    bizCritical: active.filter((f) => f.risk?.assetCriticality === "critica" || f.risk?.assetCriticality === "alta").length,
+    assets: new Set(active.map((f) => assetKey(f, meta))).size,
+    remediation,
+    trend: computeTrend(active, prev),
+    top: topUrgent(active, 3),
+  };
+}
+
+function trendPhrase(t: Trend): string {
+  const dir = t.added > t.resolved ? "empeoró" : t.resolved > t.added ? "mejoró" : "se mantuvo";
+  return `Frente a la corrida anterior (\`${t.prevId}\`) la postura **${dir}**: ${t.resolved} resuelto(s), ${t.added} nuevo(s), ${t.kept} persisten.`;
+}
+
+function execLines(e: ExecSummary): string[] {
+  const out: string[] = ["## Resumen ejecutivo", ""];
+  if (e.total === 0) {
+    out.push("No hay hallazgos activos en esta corrida.");
+    if (e.trend) out.push("", trendPhrase(e.trend));
+    if (e.remediation.fixed || e.remediation.accepted) out.push("", `Remediación: ${e.remediation.fixed} corregido(s), ${e.remediation.accepted} con riesgo aceptado.`);
+    out.push("");
+    return out;
+  }
+  const foco = e.openCritHigh ? `${e.openCritHigh} requiere(n) atención prioritaria (${e.crit} crítico(s), ${e.high} alto(s))` : "ninguno es crítico ni alto";
+  out.push(`Se evaluaron **${e.assets}** activo(s) y hay **${e.total}** hallazgo(s) activo(s); ${foco}.`);
+  const expl: string[] = [];
+  if (e.kev) expl.push(`**${e.kev}** en explotación activa (CISA KEV)`);
+  if (e.highEpss) expl.push(`**${e.highEpss}** con alta probabilidad de explotación (EPSS ≥ 10%)`);
+  if (expl.length) out.push("", `Explotabilidad real: ${expl.join(" y ")} — son los que conviene remediar primero.`);
+  if (e.bizCritical) out.push("", `**${e.bizCritical}** afecta(n) a activos de criticidad de negocio alta o crítica.`);
+  if (e.trend) out.push("", trendPhrase(e.trend));
+  const rem = e.remediation;
+  if (rem.fixed || rem.accepted || rem.fp) out.push("", `Avance de remediación: ${rem.fixed} corregido(s), ${rem.accepted} con riesgo aceptado, ${rem.fp} descartado(s) como falso positivo.`);
+  if (e.top.length) {
+    out.push("", "**Lo más urgente:**");
+    for (const f of e.top) out.push(`- ${f.id} · ${urgencyLabel(f)} · ${trunc(f.title, 90)}`);
+  }
+  out.push("");
+  return out;
+}
+
 function details(f: Finding): string[] {
   const rows: string[] = [];
   rows.push(`- **Categoría:** ${CAT_ES[f.category]} · **Herramienta:** ${f.tools.join(", ")} · **Regla:** \`${f.ruleId}\``);
@@ -55,14 +186,15 @@ function details(f: Finding): string[] {
   return rows;
 }
 
-export function toMarkdown(meta: RunMeta, findings: Finding[], includeSuppressed: boolean): string {
+export function toMarkdown(meta: RunMeta, findings: Finding[], includeSuppressed: boolean, prev?: PriorRun): string {
   const s = meta.summary!;
   const active = findings.filter((f) => !isSuppressed(f));
   const suppressed = findings.filter(isSuppressed);
   const out: string[] = [];
   out.push(`# Informe de seguridad — ${meta.target}`, "");
   out.push(`Corrida \`${meta.id}\` · ${meta.kind} · ${meta.startedAt.replace("T", " ").slice(0, 16)} UTC`, "");
-  out.push("## Resumen", "");
+  out.push(...execLines(buildExecSummary(meta, findings, prev)));
+  out.push("## Resumen técnico", "");
   out.push("| Severidad | Hallazgos |", "|---|---:|");
   for (const sev of SEVERITIES) out.push(`| ${SEV_ES[sev]} | ${s.bySeverity[sev]} |`);
   out.push(`| **Total activos** | **${s.total}** |`, "");
@@ -103,7 +235,27 @@ export function toMarkdown(meta: RunMeta, findings: Finding[], includeSuppressed
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-export function toHtml(meta: RunMeta, findings: Finding[], includeSuppressed: boolean): string {
+function execHtml(e: ExecSummary): string {
+  const lines = execLines(e)
+    .slice(2) // quita "## Resumen ejecutivo" y la línea en blanco
+    .filter((l) => l !== "" && l !== "## Resumen ejecutivo")
+    .map((l) => {
+      const html = esc(l.replace(/^- /, "")).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>");
+      return l.startsWith("- ") ? `<li>${html}</li>` : l.startsWith("**Lo más urgente:**") ? `<p><b>Lo más urgente:</b></p><ul>` : `<p>${html}</p>`;
+    });
+  // cierra la lista de "lo más urgente" si quedó abierta
+  const body = lines.join("\n") + (lines.some((l) => l.includes("<ul>")) ? "</ul>" : "");
+  const kpis = [
+    { n: e.total, l: "Hallazgos activos" },
+    { n: e.openCritHigh, l: "Crít./altos" },
+    { n: e.kev, l: "En KEV" },
+    { n: e.highEpss, l: "EPSS ≥ 10%" },
+  ];
+  const strip = kpis.map((k) => `<div class="kpi"><b>${k.n}</b><span>${k.l}</span></div>`).join("");
+  return `<section class="exec"><h2>Resumen ejecutivo</h2><div class="kpis">${strip}</div>${body}</section>`;
+}
+
+export function toHtml(meta: RunMeta, findings: Finding[], includeSuppressed: boolean, prev?: PriorRun): string {
   const s = meta.summary!;
   const active = findings.filter((f) => !isSuppressed(f));
   const cards = active
@@ -144,8 +296,11 @@ table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0 20px;displ
 .f{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;margin:8px 0;padding:8px 12px}.f summary{cursor:pointer;font-weight:600}
 .sev{color:var(--c);font-size:12px;text-transform:uppercase;margin-right:8px}.id{color:var(--mut);font-family:ui-monospace,monospace;font-size:12px;margin-right:8px}
 pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;overflow-x:auto;font-size:12px;white-space:pre-wrap;word-break:break-word}code{font-size:12px;word-break:break-all}ul{padding-left:18px}
+.exec{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--low);border-radius:8px;padding:4px 16px 12px;margin:20px 0}.exec h2{margin:12px 0 4px}.exec p{margin:8px 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin:12px 0}.kpi{text-align:center;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px}.kpi b{display:block;font-size:22px}.kpi span{color:var(--mut);font-size:11px}
 </style></head><body><main>
 <h1>Informe de seguridad — ${esc(meta.target)}</h1><div class="meta">Corrida ${esc(meta.id)} · ${esc(meta.kind)} · ${meta.startedAt.replace("T", " ").slice(0, 16)} UTC · ${s.total} hallazgos activos${s.suppressed ? `, ${s.suppressed} descartados` : ""}</div>
+${execHtml(buildExecSummary(meta, findings, prev))}
 <div class="tiles">${tiles}</div>
 <h2>Herramientas</h2><table><tr><th>Herramienta</th><th>Versión</th><th>Estado</th><th>Hallazgos</th><th>Nota</th></tr>${tools}</table>
 ${priorityRows ? `<h2>Prioridad por riesgo</h2><p class="meta">Orden por explotabilidad real (EPSS/CISA KEV), no solo por severidad.</p><table><tr><th>#</th><th>Riesgo</th><th>Severidad</th><th>Hallazgo</th><th>Dónde</th></tr>${priorityRows}</table>` : ""}

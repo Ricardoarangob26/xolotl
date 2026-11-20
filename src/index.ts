@@ -988,11 +988,23 @@ server.registerTool(
       const { meta, findings } = loadRun(a.run_id);
       const fmt = a.format ?? "md";
       const incl = a.include_suppressed ?? true;
+      // Corrida anterior del mismo objetivo y tipo, para la tendencia del resumen ejecutivo.
+      let prev: { meta: RunMeta; findings: Finding[] } | undefined;
+      if (fmt === "md" || fmt === "html") {
+        const prior = listRuns(200).find((r) => r.id !== meta.id && r.target === meta.target && r.kind === meta.kind && r.startedAt < meta.startedAt);
+        if (prior) {
+          try {
+            prev = loadRun(prior.id);
+          } catch {
+            /* la corrida anterior ya no está: el resumen va sin tendencia */
+          }
+        }
+      }
       const body =
         fmt === "md"
-          ? toMarkdown(meta, findings, incl)
+          ? toMarkdown(meta, findings, incl, prev)
           : fmt === "html"
-            ? toHtml(meta, findings, incl)
+            ? toHtml(meta, findings, incl, prev)
             : JSON.stringify(fmt === "sarif" ? toSarif(meta, findings) : { meta, findings }, null, 2);
       const file = path.resolve(a.output_path ?? path.join(runDir(meta.id), `informe.${fmt}`));
       fs.mkdirSync(path.dirname(file), { recursive: true });
