@@ -12,6 +12,19 @@ description: Revisión de seguridad de servidores Linux (on-premise, máquinas v
 
 Distribuciones con vulnerabilidades: Debian, Ubuntu, RHEL, CentOS, Rocky, AlmaLinux, Oracle Linux, Amazon Linux, Fedora, Alpine. En otras igual corre el endurecimiento.
 
+## Benchmark formal con Lynis (`scan_lynis`)
+
+Para un benchmark de endurecimiento reconocido (muchas comprobaciones alineadas con CIS/STIG) y un
+**índice de endurecimiento** del sistema, usa `scan_lynis` además de `scan_host`:
+
+- **Tier 1 (tu flujo MobaXterm):** `scan_lynis` sin argumentos (o con `target`) da el comando para
+  correr `sudo lynis audit system --report-file …` a mano; luego `scan_lynis report_file=<ruta>`
+  parsea el `lynis-report.dat` a hallazgos. Lynis no cambia nada (solo lectura).
+- **Tier 2:** `scan_lynis target=usuario@host` lo corre por SSH (el host debe estar en `dast_scope`).
+
+`scan_host` es nuestro recolector propio y profundo (CVE de paquetes + endurecimiento accionable);
+`scan_lynis` añade la cobertura y el puntaje de un estándar externo. Se complementan.
+
 ## 1. Autorización y modo
 
 Revisar un servidor ajeno sin permiso es un incidente, aunque sea en solo lectura. Antes de empezar, confirma con el usuario que el servidor es suyo o que tiene autorización.

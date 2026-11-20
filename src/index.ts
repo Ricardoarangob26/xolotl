@@ -32,6 +32,7 @@ import { isSuppressed, listRuns, loadRun, newRun, RunMeta, runDir, saveRun, setT
 import { buildEvalPlan, findingHistory, inventorySummary, listAssets, queryFindings, suggestNextSteps } from "./inventory.js";
 import { confirmFinding, VERDICT_ES } from "./confirm.js";
 import { untrustedSection } from "./untrusted.js";
+import { advisoryLynis, parseLynisReport, runLynisViaSsh } from "./lynis.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -456,6 +457,62 @@ server.registerTool(
     }
   },
 );
+
+server.registerTool(
+  "scan_lynis",
+  {
+    title: "Benchmark de endurecimiento (Lynis)",
+    description:
+      "Audita el endurecimiento de un servidor Linux/Unix con Lynis (muchas comprobaciones alineadas con CIS/STIG) y resume su índice de endurecimiento, avisos y sugerencias. Solo lectura: Lynis no cambia nada. Tier 1 (advisory): entrega el comando para correr Lynis a mano y traer el informe (flujo MobaXterm). Tier 2 (execute): corre Lynis por SSH con llave. También parsea un lynis-report.dat ya generado con report_file. El host debe estar en dast_scope para la vía SSH.",
+    inputSchema: {
+      target: z.string().optional().describe("usuario@host para correr Lynis por SSH (solo llave o agente)"),
+      report_file: z.string().optional().describe("Ruta a un lynis-report.dat ya generado (sudo lynis audit system --report-file …)"),
+      port: z.number().int().min(1).max(65535).optional(),
+      identity_file: z.string().optional().describe("Llave privada SSH"),
+      mode: z.enum(["advisory", "execute"]).optional().describe("advisory (Tier 1): da el comando para correrlo a mano. execute (Tier 2): corre por SSH. Con report_file se ignora."),
+      timeout_minutes: z.number().min(1).max(60).optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async (a, extra) => {
+    try {
+      // Con un informe ya generado, parsear directamente (el camino Tier 1 completo).
+      if (a.report_file) {
+        const file = path.resolve(a.report_file);
+        if (!fs.existsSync(file)) return fail(`No existe ${file}`);
+        const host = a.target ? a.target.split("@").pop()! : "servidor";
+        const parsed = parseLynisReport(fs.readFileSync(file, "utf8"), host);
+        return text(await finishLynis(parsed, file));
+      }
+      // Tier 1: si se iba a entrar por SSH, en advisory se entregan las instrucciones.
+      if (!a.target || resolveMode(a.mode) === "advisory") return text(advisoryLynis(a.target));
+      // Tier 2: SSH.
+      const host = a.target.split("@").pop()!;
+      if (!matchScope(host)) return fail(`${host} no está en el alcance autorizado. Regístralo con dast_scope action=add.`);
+      progress(extra as Extra, 0, 1, `lynis por SSH en ${a.target}`);
+      const report = await runLynisViaSsh({ target: a.target, port: a.port, identityFile: a.identity_file, timeoutMs: minutes(a.timeout_minutes ?? 15) });
+      const parsed = parseLynisReport(report, host);
+      return text(await finishLynis(parsed, `ssh ${a.target}`));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+async function finishLynis(parsed: ReturnType<typeof parseLynisReport>, via: string): Promise<string> {
+  const { meta } = newRun("lynis", parsed.host, { via, hardeningIndex: parsed.hardeningIndex, lynisVersion: parsed.lynisVersion });
+  const o: Outcome = {
+    run: {
+      tool: "lynis",
+      status: "ok",
+      version: parsed.lynisVersion,
+      count: parsed.findings.length,
+      message: `índice de endurecimiento ${parsed.hardeningIndex ?? "?"}/100`,
+    },
+    findings: parsed.findings,
+  };
+  return finishRun(meta, [o], null);
+}
 
 server.registerTool(
   "dast_scope",

@@ -40298,6 +40298,101 @@ function untrustedSection(body, label) {
 ${fence2(body, label)}`;
 }
 
+// src/lynis.ts
+var LYNIS_REPORT_PATH = "/tmp/xolotl-lynis.dat";
+var LYNIS_REMOTE_CMD = `command -v lynis >/dev/null 2>&1 || { echo "LYNIS_NOT_INSTALLED"; exit 0; }; sudo -n lynis audit system --quiet --no-colors --report-file ${LYNIS_REPORT_PATH} >/dev/null 2>&1; cat ${LYNIS_REPORT_PATH} 2>/dev/null`;
+var clean = (s) => s && s !== "-" ? s.trim() : "";
+function parseLynisReport(text2, host = "servidor") {
+  if (!/lynis_version=|hardening_index=|^(warning|suggestion)\[\]=/m.test(text2)) {
+    throw new Error("El archivo no parece un informe de Lynis (lynis-report.dat). Genera uno con: sudo lynis audit system --report-file <ruta>.");
+  }
+  const findings = [];
+  let hardeningIndex;
+  let lynisVersion;
+  let reportHost = host;
+  const emit = (kind, rest) => {
+    const [idRaw, title, details2, solution] = rest.split("|");
+    const id = clean(idRaw).replace(/:.*$/, "") || "LYNIS";
+    const severity = kind === "warning" ? "medium" : "low";
+    findings.push({
+      tool: "lynis",
+      category: "config",
+      severity,
+      ruleId: `LYNIS-${id}`,
+      title: clean(title) || (kind === "warning" ? `Aviso de Lynis ${id}` : `Sugerencia de Lynis ${id}`),
+      description: clean(details2) || void 0,
+      remediation: clean(solution) || void 0,
+      location: { target: reportHost }
+    });
+  };
+  for (const line of text2.split(/\r?\n/)) {
+    const m = line.match(/^([a-z_]+)(\[\])?=(.*)$/);
+    if (!m) continue;
+    const key = m[1];
+    const val = m[3];
+    if (key === "warning") emit("warning", val);
+    else if (key === "suggestion") emit("suggestion", val);
+    else if (key === "hardening_index") hardeningIndex = Number(val) || void 0;
+    else if (key === "lynis_version") lynisVersion = val.trim();
+    else if ((key === "hostname" || key === "os_hostname") && val.trim()) reportHost = val.trim();
+  }
+  if (reportHost !== host) for (const f of findings) f.location = { target: reportHost };
+  if (hardeningIndex !== void 0) {
+    const sev = hardeningIndex < 55 ? "high" : hardeningIndex < 70 ? "medium" : hardeningIndex < 80 ? "low" : "info";
+    findings.unshift({
+      tool: "lynis",
+      category: "config",
+      severity: sev,
+      ruleId: "LYNIS-HARDENING-INDEX",
+      title: `\xCDndice de endurecimiento de Lynis: ${hardeningIndex}/100`,
+      description: `Lynis${lynisVersion ? ` ${lynisVersion}` : ""} calific\xF3 el endurecimiento del sistema en ${hardeningIndex}/100. Es una medida global de la postura; s\xFAbela atendiendo los avisos y sugerencias de abajo.`,
+      remediation: "Prioriza los avisos (warnings) y luego las sugerencias; reejecuta Lynis para ver c\xF3mo sube el \xEDndice.",
+      location: { target: reportHost }
+    });
+  }
+  return { findings, hardeningIndex, lynisVersion, host: reportHost };
+}
+function advisoryLynis(target) {
+  return [
+    "## Tier 1 \xB7 advisory \u2014 benchmark de endurecimiento con Lynis (solo lectura)",
+    `Objetivo: ${target ?? "el servidor Linux"}. Lynis no cambia nada del sistema.`,
+    "",
+    "En el servidor (MobaXterm, consola o basti\xF3n):",
+    "  1. Instalar Lynis si falta:",
+    "       Debian/Ubuntu:  sudo apt-get install -y lynis",
+    "       RHEL/Rocky:     sudo dnf install -y lynis   (o desde el repo de CISOfy)",
+    "       Sin paquete:    git clone https://github.com/CISOfy/lynis && cd lynis",
+    "  2. Auditar y guardar el informe (solo lectura):",
+    `       sudo lynis audit system --quiet --no-colors --report-file ${LYNIS_REPORT_PATH}`,
+    `  3. Descargar el informe:  ${LYNIS_REPORT_PATH}`,
+    "",
+    "Volver: scan_lynis con report_file=<ruta del lynis-report.dat>. El ingreso es completo."
+  ].join("\n");
+}
+async function runLynisViaSsh(o) {
+  const ssh = which("ssh");
+  if (!ssh) throw new Error("No se encontr\xF3 el cliente ssh en el PATH.");
+  if (!/^[A-Za-z0-9_][A-Za-z0-9._-]*(@[A-Za-z0-9._-]+)?$/.test(o.target)) throw new Error(`Destino SSH no v\xE1lido: ${o.target}`);
+  const args = [
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=15",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    ...o.port ? ["-p", String(o.port)] : [],
+    ...o.identityFile ? ["-i", o.identityFile] : [],
+    "--",
+    o.target,
+    "sh -s"
+  ];
+  const r = await run(ssh, args, { input: LYNIS_REMOTE_CMD, timeoutMs: o.timeoutMs, maxStdout: 16 * 1024 * 1024 });
+  if (r.timedOut) throw new Error("La ejecuci\xF3n de Lynis por SSH super\xF3 el tiempo l\xEDmite.");
+  if (r.stdout.includes("LYNIS_NOT_INSTALLED")) throw new Error("Lynis no est\xE1 instalado en el objetivo. Inst\xE1lalo (apt/dnf install lynis) o usa el modo advisory y s\xFAbelo a mano.");
+  if (!/hardening_index=|lynis_version=/.test(r.stdout)) throw new Error(`No se obtuvo el informe de Lynis por SSH (c\xF3digo ${r.code}). Revisa sudo/instalaci\xF3n, o usa advisory + report_file.`);
+  return r.stdout;
+}
+
 // src/tier.ts
 var defaultMode = () => (process.env.XOLOTL_MODE ?? "").trim().toLowerCase() === "advisory" ? "advisory" : "execute";
 var resolveMode = (requested) => requested ?? defaultMode();
@@ -40978,6 +41073,56 @@ server.registerTool(
     }
   }
 );
+server.registerTool(
+  "scan_lynis",
+  {
+    title: "Benchmark de endurecimiento (Lynis)",
+    description: "Audita el endurecimiento de un servidor Linux/Unix con Lynis (muchas comprobaciones alineadas con CIS/STIG) y resume su \xEDndice de endurecimiento, avisos y sugerencias. Solo lectura: Lynis no cambia nada. Tier 1 (advisory): entrega el comando para correr Lynis a mano y traer el informe (flujo MobaXterm). Tier 2 (execute): corre Lynis por SSH con llave. Tambi\xE9n parsea un lynis-report.dat ya generado con report_file. El host debe estar en dast_scope para la v\xEDa SSH.",
+    inputSchema: {
+      target: external_exports.string().optional().describe("usuario@host para correr Lynis por SSH (solo llave o agente)"),
+      report_file: external_exports.string().optional().describe("Ruta a un lynis-report.dat ya generado (sudo lynis audit system --report-file \u2026)"),
+      port: external_exports.number().int().min(1).max(65535).optional(),
+      identity_file: external_exports.string().optional().describe("Llave privada SSH"),
+      mode: external_exports.enum(["advisory", "execute"]).optional().describe("advisory (Tier 1): da el comando para correrlo a mano. execute (Tier 2): corre por SSH. Con report_file se ignora."),
+      timeout_minutes: external_exports.number().min(1).max(60).optional()
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true }
+  },
+  async (a, extra) => {
+    try {
+      if (a.report_file) {
+        const file2 = path13.resolve(a.report_file);
+        if (!fs16.existsSync(file2)) return fail(`No existe ${file2}`);
+        const host2 = a.target ? a.target.split("@").pop() : "servidor";
+        const parsed2 = parseLynisReport(fs16.readFileSync(file2, "utf8"), host2);
+        return text(await finishLynis(parsed2, file2));
+      }
+      if (!a.target || resolveMode(a.mode) === "advisory") return text(advisoryLynis(a.target));
+      const host = a.target.split("@").pop();
+      if (!matchScope(host)) return fail(`${host} no est\xE1 en el alcance autorizado. Reg\xEDstralo con dast_scope action=add.`);
+      progress(extra, 0, 1, `lynis por SSH en ${a.target}`);
+      const report = await runLynisViaSsh({ target: a.target, port: a.port, identityFile: a.identity_file, timeoutMs: minutes(a.timeout_minutes ?? 15) });
+      const parsed = parseLynisReport(report, host);
+      return text(await finishLynis(parsed, `ssh ${a.target}`));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+async function finishLynis(parsed, via) {
+  const { meta: meta3 } = newRun("lynis", parsed.host, { via, hardeningIndex: parsed.hardeningIndex, lynisVersion: parsed.lynisVersion });
+  const o = {
+    run: {
+      tool: "lynis",
+      status: "ok",
+      version: parsed.lynisVersion,
+      count: parsed.findings.length,
+      message: `\xEDndice de endurecimiento ${parsed.hardeningIndex ?? "?"}/100`
+    },
+    findings: parsed.findings
+  };
+  return finishRun(meta3, [o], null);
+}
 server.registerTool(
   "dast_scope",
   {

@@ -88,7 +88,7 @@ que tú entregas; lo que toca un sistema vivo respeta Tier 1/Tier 2 y el alcance
 | Próximo | Motor previsto | Nivel de acceso |
 |---|---|---|
 | Discos de VM sin encenderlas | `trivy vm` (VMDK, AMI, snapshots EBS) | Credenciales / archivo de disco |
-| Benchmarks CIS/STIG formales | OpenSCAP (RHEL), Lynis; salida STIG con justificaciones | Usuario de lectura |
+| Benchmarks CIS/STIG formales | ✅ **Lynis** (`scan_lynis`): índice de endurecimiento + avisos/sugerencias, Tier 1 (informe a mano, flujo MobaXterm) o Tier 2 (SSH). Pendiente: OpenSCAP (RHEL) y salida en formato STIG con justificaciones | Usuario de lectura |
 | Nube: plano de control | Prowler con rol de solo lectura | Usuario de lectura |
 | Kubernetes: postura | kube-bench (CIS) + Kubescape (NSA/MITRE) | Usuario de lectura (kubeconfig RO) |
 | Windows Server | Inventario por WinRM + HardeningKitty | Credenciales |
