@@ -36,6 +36,7 @@ import { advisoryLynis, parseLynisReport, runLynisViaSsh } from "./lynis.js";
 import { dbAdvisory, parseDbCollected } from "./db.js";
 import { adAdvisory, parseAdCollected } from "./ad.js";
 import { k8sAdvisory, parseKubeBench } from "./k8s.js";
+import { cloudAdvisory, parseProwler } from "./cloud.js";
 import { advisoryDast, advisoryHost, advisoryNetwork, defaultMode, resolveMode } from "./tier.js";
 import { enrichRisk, feedStatus, refreshFeeds } from "./risk.js";
 import { clearCriticality, CRITICALITY, Criticality, loadAssets, setCriticality } from "./assets.js";
@@ -586,6 +587,37 @@ server.registerTool(
       const { meta } = newRun("k8s", cluster, { source: file, totals: parsed.totals });
       const o: Outcome = {
         run: { tool: "kube-bench", status: "ok", count: parsed.findings.length, message: `CIS: ${parsed.totals.fail} FAIL · ${parsed.totals.warn} WARN · ${parsed.totals.pass} PASS` },
+        findings: parsed.findings,
+      };
+      return text(await finishRun(meta, [o], null));
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  "scan_cloud",
+  {
+    title: "Postura de nube (Prowler)",
+    description:
+      "Evalúa la postura de seguridad de una suscripción de nube con Prowler (CIS y otros marcos), con una identidad de SOLO LECTURA. No se conecta ni instala nada: en modo advisory entrega cómo correr Prowler contra Azure (roles Reader + Security Reader) con salida JSON OCSF, y con collected_file parsea ese JSON a hallazgos. Respeta la severidad que asigna Prowler por check; agrupa por control y lista los recursos afectados. Primer proveedor: Azure.",
+    inputSchema: {
+      provider: z.enum(["azure"]).describe("Proveedor de nube (por ahora azure)"),
+      collected_file: z.string().optional().describe("Archivo JSON OCSF de Prowler (prowler azure --output-formats json-ocsf)"),
+      target: z.string().optional().describe("Nombre/ID de la suscripción para el inventario (si el JSON no lo trae)"),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(cloudAdvisory(a.provider, a.target));
+      const file = path.resolve(a.collected_file);
+      if (!fs.existsSync(file)) return fail(`No existe ${file}`);
+      const parsed = parseProwler(a.provider, fs.readFileSync(file, "utf8"), a.target?.trim() || "suscripción");
+      const { meta } = newRun("cloud", parsed.account, { provider: a.provider, source: file, totals: parsed.totals });
+      const o: Outcome = {
+        run: { tool: "prowler", status: "ok", count: parsed.findings.length, message: `${a.provider}: ${parsed.totals.fail} FAIL · ${parsed.totals.manual} manual · ${parsed.totals.pass} PASS` },
         findings: parsed.findings,
       };
       return text(await finishRun(meta, [o], null));

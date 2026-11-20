@@ -40743,6 +40743,85 @@ function parseKubeBench(text2, cluster = "cluster") {
   return { findings, totals, cluster };
 }
 
+// src/cloud.ts
+function cloudAdvisory(provider, target) {
+  return [
+    `## Tier 1 \xB7 advisory \u2014 postura de Azure con Prowler (solo lectura)${target ? ` \xB7 ${target}` : ""}`,
+    "Prowler eval\xFAa la suscripci\xF3n contra CIS y otros marcos. Solo lee: con una identidad de solo",
+    "lectura (roles \xABReader\xBB + \xABSecurity Reader\xBB sobre la suscripci\xF3n) no cambia nada.",
+    "",
+    "1. Instala Prowler y autent\xEDcate en Azure:",
+    "     pipx install prowler            # o: pip install prowler",
+    "     az login                        # o una identidad de servicio con los roles de lectura",
+    "",
+    "2. Ejecuta Prowler sobre tu suscripci\xF3n con salida JSON (OCSF):",
+    "     prowler azure --az-cli-auth --output-formats json-ocsf --output-directory ./prowler-out",
+    "   (a\xF1ade --subscription-ids <id> para acotar; para una identidad de servicio usa --sp-env-auth",
+    "    con AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID.)",
+    "",
+    "3. Trae el archivo JSON: ./prowler-out/*.ocsf.json",
+    "",
+    "Volver: scan_cloud con provider=azure y collected_file=<ruta del .ocsf.json>."
+  ].join("\n");
+}
+var pick2 = (...xs) => xs.find((x) => x != null && x !== "");
+function parseProwler(provider, text2, account = "suscripci\xF3n") {
+  let data;
+  try {
+    data = JSON.parse(text2);
+  } catch {
+    throw new Error("El archivo no es un JSON v\xE1lido de Prowler. Gen\xE9ralo con --output-formats json-ocsf.");
+  }
+  const items = Array.isArray(data) ? data : data.findings ?? [];
+  if (!items.length) throw new Error("No se encontraron hallazgos en el JSON. \xBFEs la salida OCSF de Prowler (prowler azure --output-formats json-ocsf)?");
+  const totals = { fail: 0, manual: 0, pass: 0 };
+  const byCheck = /* @__PURE__ */ new Map();
+  let accountName = account;
+  for (const it of items) {
+    const status = String(pick2(it.status_code, it.Status) ?? "").toUpperCase();
+    if (status === "PASS") {
+      totals.pass++;
+      continue;
+    }
+    const manual = status === "MANUAL";
+    if (manual) totals.manual++;
+    else if (status === "FAIL") totals.fail++;
+    else continue;
+    const checkId = pick2(it.metadata?.event_code, it.unmapped?.check_id, it.CheckID) ?? "prowler";
+    const sevRaw = String(pick2(it.severity, it.Severity) ?? "medium").toLowerCase();
+    const severity = manual ? "info" : /^inform/.test(sevRaw) ? "info" : normSeverity(sevRaw);
+    const title = pick2(it.finding_info?.title, it.CheckTitle, checkId) ?? checkId;
+    const remediation = pick2(it.remediation?.desc, it.Remediation?.Recommendation?.Text);
+    const res = it.resources?.[0];
+    const resource = pick2(res?.name, res?.uid, it.ResourceId);
+    const region = pick2(res?.region, it.cloud?.region, it.Region);
+    const service = pick2(res?.group?.name, it.ServiceName);
+    if (!accountName || accountName === account) accountName = pick2(it.cloud?.account?.name, it.cloud?.account?.uid) ?? account;
+    const key = `${checkId}|${manual}`;
+    const agg = byCheck.get(key) ?? { severity, title, remediation, service, resources: /* @__PURE__ */ new Set(), manual };
+    if (resource) agg.resources.add(`${resource}${region ? ` (${region})` : ""}`);
+    byCheck.set(key, agg);
+  }
+  const findings = [];
+  for (const [key, a] of byCheck) {
+    const checkId = key.split("|")[0];
+    const res = [...a.resources];
+    findings.push({
+      tool: "prowler",
+      category: "config",
+      severity: a.severity,
+      ruleId: `PROWLER-${checkId}`,
+      title: a.title,
+      description: `Prowler (Azure)${a.service ? ` \xB7 ${a.service}` : ""}${a.manual ? " \xB7 requiere revisi\xF3n manual" : ""}${res.length ? ` \xB7 ${res.length} recurso(s) afectado(s)` : ""}.`,
+      remediation: a.remediation,
+      evidence: res.length ? res.slice(0, 20).join("\n") + (res.length > 20 ? `
+\u2026 (+${res.length - 20})` : "") : void 0,
+      location: { target: accountName }
+    });
+  }
+  return { findings, totals, account: accountName };
+}
+
 // src/tier.ts
 var defaultMode = () => (process.env.XOLOTL_MODE ?? "").trim().toLowerCase() === "advisory" ? "advisory" : "execute";
 var resolveMode = (requested) => requested ?? defaultMode();
@@ -41538,6 +41617,35 @@ server.registerTool(
       const { meta: meta3 } = newRun("k8s", cluster, { source: file2, totals: parsed.totals });
       const o = {
         run: { tool: "kube-bench", status: "ok", count: parsed.findings.length, message: `CIS: ${parsed.totals.fail} FAIL \xB7 ${parsed.totals.warn} WARN \xB7 ${parsed.totals.pass} PASS` },
+        findings: parsed.findings
+      };
+      return text(await finishRun(meta3, [o], null));
+    } catch (e) {
+      return fail(e.message);
+    }
+  }
+);
+server.registerTool(
+  "scan_cloud",
+  {
+    title: "Postura de nube (Prowler)",
+    description: "Eval\xFAa la postura de seguridad de una suscripci\xF3n de nube con Prowler (CIS y otros marcos), con una identidad de SOLO LECTURA. No se conecta ni instala nada: en modo advisory entrega c\xF3mo correr Prowler contra Azure (roles Reader + Security Reader) con salida JSON OCSF, y con collected_file parsea ese JSON a hallazgos. Respeta la severidad que asigna Prowler por check; agrupa por control y lista los recursos afectados. Primer proveedor: Azure.",
+    inputSchema: {
+      provider: external_exports.enum(["azure"]).describe("Proveedor de nube (por ahora azure)"),
+      collected_file: external_exports.string().optional().describe("Archivo JSON OCSF de Prowler (prowler azure --output-formats json-ocsf)"),
+      target: external_exports.string().optional().describe("Nombre/ID de la suscripci\xF3n para el inventario (si el JSON no lo trae)")
+    },
+    annotations: { readOnlyHint: true }
+  },
+  async (a) => {
+    try {
+      if (!a.collected_file) return text(cloudAdvisory(a.provider, a.target));
+      const file2 = path13.resolve(a.collected_file);
+      if (!fs16.existsSync(file2)) return fail(`No existe ${file2}`);
+      const parsed = parseProwler(a.provider, fs16.readFileSync(file2, "utf8"), a.target?.trim() || "suscripci\xF3n");
+      const { meta: meta3 } = newRun("cloud", parsed.account, { provider: a.provider, source: file2, totals: parsed.totals });
+      const o = {
+        run: { tool: "prowler", status: "ok", count: parsed.findings.length, message: `${a.provider}: ${parsed.totals.fail} FAIL \xB7 ${parsed.totals.manual} manual \xB7 ${parsed.totals.pass} PASS` },
         findings: parsed.findings
       };
       return text(await finishRun(meta3, [o], null));
